@@ -57,13 +57,13 @@ function Dashboard() {
 
   const storedUser = localStorage.getItem('resq_user')
 
-  let currentUser = null
-
-  try {
-    currentUser = storedUser ? JSON.parse(storedUser) : null
-  } catch {
-    currentUser = null
-  }
+  const currentUser = (() => {
+    try {
+      return storedUser ? JSON.parse(storedUser) : null
+    } catch {
+      return null
+    }
+  })()
 
   const userName = currentUser?.name || 'Admin User'
   const isAdmin = currentUser?.role === 'ADMIN'

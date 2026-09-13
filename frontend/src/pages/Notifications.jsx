@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Bell,
   AlertTriangle,
@@ -20,7 +20,7 @@ function Notifications() {
 
   const token = localStorage.getItem("resq_token");
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -54,11 +54,11 @@ function Notifications() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
 
   const getNotificationIcon = (notification) => {
     const type = String(
@@ -183,7 +183,6 @@ function Notifications() {
 
   return (
     <div className="notifications-page">
-
       <div className="notifications-background"></div>
 
       <div className="notifications-container">

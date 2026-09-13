@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Boxes,
   Package,
@@ -16,9 +16,10 @@ function ResourceAllocation() {
   const [resources, setResources] = useState([]);
   const [disasters, setDisasters] = useState([]);
   const [allocations, setAllocations] = useState([]);
-
   const [loading, setLoading] = useState(true);
-  const [allocating, setAllocating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
     resource_id: "",
@@ -26,105 +27,88 @@ function ResourceAllocation() {
     quantity: "",
   });
 
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("");
-
   const token = localStorage.getItem("resq_token");
 
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    "Content-Type": "application/json",
-  };
-
-  // ============================================
-  // FETCH DATA
-  // ============================================
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
+      setError("");
 
-      const [resourceResponse, disasterResponse, allocationResponse] =
-        await Promise.all([
-          fetch(`${API_URL}/api/resources`, {
-            headers,
-          }),
-          fetch(`${API_URL}/api/disasters`, {
-            headers,
-          }),
-          fetch(`${API_URL}/api/allocations`, {
-            headers,
-          }),
-        ]);
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
 
-      const resourceData = await resourceResponse.json();
-      const disasterData = await disasterResponse.json();
-      const allocationData = await allocationResponse.json();
+      const [resourcesRes, disastersRes, allocationsRes] = await Promise.all([
+        fetch(`${API_URL}/api/resources`, {
+          headers,
+        }),
+        fetch(`${API_URL}/api/disasters`, {
+          headers,
+        }),
+        fetch(`${API_URL}/api/allocations`, {
+          headers,
+        }),
+      ]);
 
-      if (resourceResponse.ok) {
-        setResources(
-          Array.isArray(resourceData)
-            ? resourceData
-            : resourceData.resources || []
-        );
+      if (!resourcesRes.ok) {
+        throw new Error("Failed to fetch resources");
       }
 
-      if (disasterResponse.ok) {
-        setDisasters(
-          Array.isArray(disasterData)
-            ? disasterData
-            : disasterData.disasters || []
-        );
+      if (!disastersRes.ok) {
+        throw new Error("Failed to fetch disasters");
       }
 
-      if (allocationResponse.ok) {
-        setAllocations(
-          Array.isArray(allocationData)
-            ? allocationData
-            : allocationData.allocations || []
-        );
+      if (!allocationsRes.ok) {
+        throw new Error("Failed to fetch allocations");
       }
-    } catch (error) {
-      console.error("Allocation data error:", error);
 
-      setMessage("Unable to load allocation data.");
-      setMessageType("error");
+      const resourcesData = await resourcesRes.json();
+      const disastersData = await disastersRes.json();
+      const allocationsData = await allocationsRes.json();
+
+      setResources(Array.isArray(resourcesData) ? resourcesData : []);
+      setDisasters(Array.isArray(disastersData) ? disastersData : []);
+      setAllocations(Array.isArray(allocationsData) ? allocationsData : []);
+    } catch (err) {
+      console.error("Resource allocation fetch error:", err);
+      setError(err.message || "Failed to load resource allocation data");
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchData();
-  }, []);
-
-  // ============================================
-  // FORM CHANGE
-  // ============================================
+  }, [fetchData]);
 
   const handleChange = (event) => {
-    setForm((previousForm) => ({
-      ...previousForm,
-      [event.target.name]: event.target.value,
+    const { name, value } = event.target;
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
     }));
 
     setMessage("");
-    setMessageType("");
+    setError("");
   };
-
-  // ============================================
-  // ALLOCATE RESOURCE
-  // ============================================
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     setMessage("");
-    setMessageType("");
+    setError("");
 
     if (!form.resource_id || !form.disaster_id || !form.quantity) {
-      setMessage("Please fill all allocation fields.");
-      setMessageType("error");
+      setError("Please fill all required fields.");
+      return;
+    }
+
+    const quantity = Number(form.quantity);
+
+    if (quantity <= 0) {
+      setError("Quantity must be greater than 0.");
       return;
     }
 
@@ -133,53 +117,40 @@ function ResourceAllocation() {
     );
 
     if (!selectedResource) {
-      setMessage("Resource not found.");
-      setMessageType("error");
+      setError("Selected resource was not found.");
       return;
     }
 
-    const requestedQuantity = Number(form.quantity);
-    const availableQuantity = Number(selectedResource.quantity || 0);
-
-    if (requestedQuantity <= 0) {
-      setMessage("Quantity must be greater than 0.");
-      setMessageType("error");
-      return;
-    }
-
-    if (requestedQuantity > availableQuantity) {
-      setMessage(
-        `Only ${availableQuantity} units are available for this resource.`
+    if (quantity > Number(selectedResource.quantity)) {
+      setError(
+        `Only ${selectedResource.quantity} ${selectedResource.unit || "units"} available.`
       );
-      setMessageType("error");
       return;
     }
 
     try {
-      setAllocating(true);
+      setSubmitting(true);
 
       const response = await fetch(`${API_URL}/api/allocations`, {
         method: "POST",
-        headers,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           resource_id: Number(form.resource_id),
           disaster_id: Number(form.disaster_id),
-          quantity: requestedQuantity,
+          quantity,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        setMessage(
-          data.message || "Failed to allocate resource."
-        );
-        setMessageType("error");
-        return;
+        throw new Error(data.message || "Resource allocation failed");
       }
 
-      setMessage("Resource allocated successfully!");
-      setMessageType("success");
+      setMessage("Resource allocated successfully.");
 
       setForm({
         resource_id: "",
@@ -188,223 +159,152 @@ function ResourceAllocation() {
       });
 
       await fetchData();
-    } catch (error) {
-      console.error("Allocation error:", error);
-
-      setMessage(
-        "Server error while allocating resource."
-      );
-      setMessageType("error");
+    } catch (err) {
+      console.error("Allocation error:", err);
+      setError(err.message || "Resource allocation failed");
     } finally {
-      setAllocating(false);
+      setSubmitting(false);
     }
   };
 
-  // ============================================
-  // HELPERS
-  // ============================================
+  const totalResources = resources.length;
 
-  const getDisasterName = (id) => {
-    const disaster = disasters.find(
-      (item) => String(item.id) === String(id)
-    );
-
-    if (!disaster) {
-      return `Disaster #${id}`;
-    }
-
-    return (
-      disaster.title ||
-      disaster.disaster_type ||
-      `Disaster #${disaster.id}`
-    );
-  };
-
-  const getResourceName = (id) => {
-    const resource = resources.find(
-      (item) => String(item.id) === String(id)
-    );
-
-    return resource?.name || `Resource #${id}`;
-  };
-
-  const totalAllocated = allocations.reduce(
-    (sum, allocation) =>
-      sum +
-      Number(
-        allocation.quantity ||
-          allocation.allocated_quantity ||
-          0
-      ),
+  const totalAvailable = resources.reduce(
+    (total, resource) => total + Number(resource.quantity || 0),
     0
   );
 
-  const availableResources = resources.filter(
-    (resource) => Number(resource.quantity || 0) > 0
+  const totalAllocated = allocations.reduce(
+    (total, allocation) => total + Number(allocation.quantity || 0),
+    0
+  );
+
+  const activeDisasters = disasters.filter(
+    (disaster) =>
+      disaster.status !== "RESOLVED" && disaster.status !== "REJECTED"
   ).length;
 
-  const criticalDisasters = disasters.filter(
-    (disaster) => disaster.severity === "CRITICAL"
-  ).length;
-
-  // ============================================
-  // UI
-  // ============================================
+  if (loading) {
+    return (
+      <div className="resource-page">
+        <div className="resource-loading">
+          <RefreshCw className="spin" size={30} />
+          <p>Loading resource center...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="allocation-page">
+    <div className="resource-page">
+      <div className="resource-container">
+        {/* Header */}
+        <div className="resource-header">
+          <div>
+            <div className="resource-title-row">
+              <div className="resource-title-icon">
+                <Boxes size={30} />
+              </div>
 
-      <div className="allocation-background"></div>
-
-      <div className="allocation-container">
-
-        {/* HEADER */}
-
-        <div className="allocation-header">
-
-          <div className="allocation-title-row">
-
-            <div className="allocation-title-icon">
-              <Send size={27} />
+              <div>
+                <h1>Resource Allocation</h1>
+                <p>
+                  Manage emergency resources and allocate supplies to active
+                  disaster incidents.
+                </p>
+              </div>
             </div>
-
-            <div>
-              <span className="allocation-eyebrow">
-                RESQ OPERATIONS
-              </span>
-
-              <h1>Resource Allocation</h1>
-
-              <p>
-                Allocate emergency resources to active
-                disaster incidents.
-              </p>
-            </div>
-
           </div>
 
           <button
-            className="allocation-refresh-btn"
-            onClick={fetchData}
             type="button"
+            className="refresh-resource-btn"
+            onClick={fetchData}
           >
             <RefreshCw size={18} />
             Refresh
           </button>
-
         </div>
 
-        {/* MESSAGE */}
+        {/* Stats */}
+        <div className="resource-stats">
+          <div className="resource-stat-card">
+            <div className="stat-icon blue">
+              <Boxes size={22} />
+            </div>
 
+            <div>
+              <span>Total Resources</span>
+              <strong>{totalResources}</strong>
+            </div>
+          </div>
+
+          <div className="resource-stat-card">
+            <div className="stat-icon green">
+              <Package size={22} />
+            </div>
+
+            <div>
+              <span>Available Units</span>
+              <strong>{totalAvailable}</strong>
+            </div>
+          </div>
+
+          <div className="resource-stat-card">
+            <div className="stat-icon orange">
+              <Send size={22} />
+            </div>
+
+            <div>
+              <span>Allocated Units</span>
+              <strong>{totalAllocated}</strong>
+            </div>
+          </div>
+
+          <div className="resource-stat-card">
+            <div className="stat-icon red">
+              <AlertTriangle size={22} />
+            </div>
+
+            <div>
+              <span>Active Disasters</span>
+              <strong>{activeDisasters}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Messages */}
         {message && (
-          <div
-            className={`allocation-message ${messageType}`}
-          >
-            {messageType === "success" ? (
-              <CheckCircle2 size={18} />
-            ) : (
-              <AlertTriangle size={18} />
-            )}
-
-            <span>{message}</span>
+          <div className="resource-message success">
+            <CheckCircle2 size={20} />
+            {message}
           </div>
         )}
 
-        {/* STATS */}
-
-        <div className="allocation-stats">
-
-          <div className="allocation-stat-card">
-
-            <div className="allocation-stat-icon green">
-              <Boxes size={23} />
-            </div>
-
-            <div>
-              <span>Available Resources</span>
-              <strong>{availableResources}</strong>
-              <small>Ready for deployment</small>
-            </div>
-
+        {error && (
+          <div className="resource-message error">
+            <AlertTriangle size={20} />
+            {error}
           </div>
+        )}
 
-          <div className="allocation-stat-card">
-
-            <div className="allocation-stat-icon blue">
-              <Send size={23} />
-            </div>
-
-            <div>
-              <span>Total Allocated</span>
-              <strong>{totalAllocated}</strong>
-              <small>Units dispatched</small>
-            </div>
-
-          </div>
-
-          <div className="allocation-stat-card">
-
-            <div className="allocation-stat-icon orange">
-              <AlertTriangle size={23} />
-            </div>
-
-            <div>
-              <span>Critical Incidents</span>
-              <strong>{criticalDisasters}</strong>
-              <small>Need immediate attention</small>
-            </div>
-
-          </div>
-
-          <div className="allocation-stat-card">
-
-            <div className="allocation-stat-icon red">
-              <CheckCircle2 size={23} />
-            </div>
-
-            <div>
-              <span>Allocations</span>
-              <strong>{allocations.length}</strong>
-              <small>Recorded operations</small>
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* MAIN GRID */}
-
-        <div className="allocation-main-grid">
-
-          {/* ALLOCATION FORM */}
-
-          <section className="allocation-form-card">
-
+        <div className="resource-grid">
+          {/* Allocation Form */}
+          <div className="resource-card allocation-card">
             <div className="card-heading">
-
               <div className="card-heading-icon">
                 <Send size={21} />
               </div>
 
               <div>
-                <span>DISPATCH CENTER</span>
                 <h2>Allocate Resource</h2>
-                <p>
-                  Send available resources to an emergency.
-                </p>
+                <p>Send available resources to a disaster incident.</p>
               </div>
-
             </div>
 
-            <form onSubmit={handleSubmit}>
-
-              {/* RESOURCE */}
-
-              <div className="allocation-form-group">
-
-                <label htmlFor="resource_id">
-                  Select Resource
-                </label>
+            <form onSubmit={handleSubmit} className="allocation-form">
+              <div className="form-group">
+                <label htmlFor="resource_id">Resource</label>
 
                 <select
                   id="resource_id"
@@ -413,35 +313,19 @@ function ResourceAllocation() {
                   onChange={handleChange}
                   required
                 >
-                  <option value="">
-                    Choose resource...
-                  </option>
+                  <option value="">Select resource</option>
 
-                  {resources
-                    .filter(
-                      (resource) =>
-                        Number(resource.quantity || 0) > 0
-                    )
-                    .map((resource) => (
-                      <option
-                        key={resource.id}
-                        value={resource.id}
-                      >
-                        {resource.name} —{" "}
-                        {resource.quantity} available
-                      </option>
-                    ))}
+                  {resources.map((resource) => (
+                    <option key={resource.id} value={resource.id}>
+                      {resource.name} — {resource.quantity}{" "}
+                      {resource.unit || "units"} available
+                    </option>
+                  ))}
                 </select>
-
               </div>
 
-              {/* DISASTER */}
-
-              <div className="allocation-form-group">
-
-                <label htmlFor="disaster_id">
-                  Select Disaster
-                </label>
+              <div className="form-group">
+                <label htmlFor="disaster_id">Disaster Incident</label>
 
                 <select
                   id="disaster_id"
@@ -450,9 +334,7 @@ function ResourceAllocation() {
                   onChange={handleChange}
                   required
                 >
-                  <option value="">
-                    Choose disaster...
-                  </option>
+                  <option value="">Select disaster</option>
 
                   {disasters
                     .filter(
@@ -461,105 +343,38 @@ function ResourceAllocation() {
                         disaster.status !== "REJECTED"
                     )
                     .map((disaster) => (
-                      <option
-                        key={disaster.id}
-                        value={disaster.id}
-                      >
-                        #{disaster.id} —{" "}
-                        {disaster.disaster_type ||
-                          "Emergency"}{" "}
-                        —{" "}
-                        {disaster.severity ||
-                          "UNKNOWN"}
+                      <option key={disaster.id} value={disaster.id}>
+                        #{disaster.id} — {disaster.type} —{" "}
+                        {disaster.severity}
                       </option>
                     ))}
                 </select>
-
               </div>
 
-              {/* QUANTITY */}
+              <div className="form-group">
+                <label htmlFor="quantity">Quantity</label>
 
-              <div className="allocation-form-group">
-
-                <label htmlFor="quantity">
-                  Quantity
-                </label>
-
-                <div className="quantity-input-wrapper">
-
-                  <input
-                    id="quantity"
-                    type="number"
-                    name="quantity"
-                    min="1"
-                    value={form.quantity}
-                    onChange={handleChange}
-                    placeholder="0"
-                    required
-                  />
-
-                  <span>UNITS</span>
-
-                </div>
-
-                <small>
-                  Enter the number of units you want
-                  to allocate.
-                </small>
-
+                <input
+                  id="quantity"
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={handleChange}
+                  placeholder="Enter quantity"
+                  required
+                />
               </div>
-
-              {/* SELECTED RESOURCE */}
-
-              {form.resource_id && (
-                <div className="selected-resource-info">
-
-                  <div className="selected-resource-icon">
-                    <Package size={21} />
-                  </div>
-
-                  <div>
-                    <strong>
-                      {getResourceName(
-                        form.resource_id
-                      )}
-                    </strong>
-
-                    <span>
-                      Available:{" "}
-                      {
-                        resources.find(
-                          (resource) =>
-                            String(resource.id) ===
-                            String(form.resource_id)
-                        )?.quantity
-                      }{" "}
-                      units
-                    </span>
-                  </div>
-
-                  <CheckCircle2
-                    size={20}
-                    className="selected-check"
-                  />
-
-                </div>
-              )}
-
-              {/* SUBMIT */}
 
               <button
                 type="submit"
-                className="allocate-submit-btn"
-                disabled={allocating}
+                className="allocate-btn"
+                disabled={submitting}
               >
-
-                {allocating ? (
+                {submitting ? (
                   <>
-                    <RefreshCw
-                      className="spin"
-                      size={18}
-                    />
+                    <RefreshCw className="spin" size={18} />
                     Allocating...
                   </>
                 ) : (
@@ -568,270 +383,131 @@ function ResourceAllocation() {
                     Allocate Resource
                   </>
                 )}
-
               </button>
-
             </form>
+          </div>
 
-          </section>
-
-          {/* RESOURCE AVAILABILITY */}
-
-          <section className="allocation-resource-card">
-
+          {/* Available Resources */}
+          <div className="resource-card">
             <div className="card-heading">
-
-              <div className="card-heading-icon green-heading">
-                <Boxes size={21} />
+              <div className="card-heading-icon green-bg">
+                <Package size={21} />
               </div>
 
               <div>
-                <span>INVENTORY</span>
                 <h2>Resource Availability</h2>
-                <p>
-                  Current emergency inventory.
-                </p>
+                <p>Current emergency stock across the response center.</p>
               </div>
-
             </div>
 
-            {loading ? (
-              <div className="allocation-loading">
-
-                <RefreshCw
-                  className="spin"
-                  size={28}
-                />
-
-                <span>
-                  Loading inventory...
-                </span>
-
-              </div>
-            ) : resources.length === 0 ? (
-              <div className="allocation-empty">
-
-                <Package size={40} />
-
-                <h3>No resources</h3>
-
-                <p>
-                  Add resources from Resource Management.
-                </p>
-
-              </div>
-            ) : (
-              <div className="availability-list">
-
-                {resources.slice(0, 7).map((resource) => {
-
-                  const quantity = Number(
-                    resource.quantity || 0
-                  );
-
-                  let statusClass = "good";
-
-                  if (quantity <= 0) {
-                    statusClass = "empty";
-                  } else if (quantity <= 10) {
-                    statusClass = "low";
-                  }
-
-                  return (
-                    <div
-                      className="availability-item"
-                      key={resource.id}
-                    >
-
-                      <div className="availability-icon">
-                        <Package size={18} />
+            <div className="resource-list">
+              {resources.length === 0 ? (
+                <div className="empty-state">
+                  <Package size={35} />
+                  <p>No resources available.</p>
+                </div>
+              ) : (
+                resources.map((resource) => (
+                  <div className="resource-item" key={resource.id}>
+                    <div className="resource-item-left">
+                      <div className="resource-item-icon">
+                        <Package size={19} />
                       </div>
 
-                      <div className="availability-info">
-                        <strong>
-                          {resource.name}
-                        </strong>
+                      <div>
+                        <h3>{resource.name}</h3>
 
                         <span>
-                          {resource.category ||
-                            "Emergency Resource"}
+                          {resource.category || "General"}{" "}
+                          {resource.location
+                            ? `• ${resource.location}`
+                            : ""}
                         </span>
-
-                        <small>
-                          <MapPinned size={12} />
-                          {resource.location ||
-                            "Location not specified"}
-                        </small>
                       </div>
-
-                      <div
-                        className={`availability-quantity ${statusClass}`}
-                      >
-                        <strong>
-                          {quantity}
-                        </strong>
-
-                        <small>
-                          {resource.unit || "units"}
-                        </small>
-                      </div>
-
                     </div>
-                  );
-                })}
 
-              </div>
-            )}
-
-          </section>
-
+                    <div className="resource-quantity">
+                      <strong>{resource.quantity}</strong>
+                      <span>{resource.unit || "units"}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* HISTORY */}
-
-        <section className="allocation-history-card">
-
-          <div className="history-header">
+        {/* Allocation History */}
+        <div className="resource-card history-card">
+          <div className="card-heading">
+            <div className="card-heading-icon orange-bg">
+              <MapPinned size={21} />
+            </div>
 
             <div>
-              <span>ACTIVITY LOG</span>
-
               <h2>Allocation History</h2>
-
-              <p>
-                Resources previously assigned to incidents.
-              </p>
+              <p>Recent resource distributions to disaster incidents.</p>
             </div>
-
-            <div className="history-live">
-              <span></span>
-              Live Records
-            </div>
-
           </div>
 
-          {loading ? (
-            <div className="allocation-loading">
-              <RefreshCw
-                className="spin"
-                size={28}
-              />
-              <span>
-                Loading allocations...
-              </span>
-            </div>
-          ) : allocations.length === 0 ? (
-            <div className="allocation-empty">
-              <Send size={38} />
-
-              <h3>No allocations yet</h3>
-
-              <p>
-                Allocated resources will appear here
-                automatically.
-              </p>
+          {allocations.length === 0 ? (
+            <div className="empty-state history-empty">
+              <MapPinned size={40} />
+              <p>No resource allocations recorded yet.</p>
             </div>
           ) : (
             <div className="allocation-table-wrapper">
-
               <table className="allocation-table">
-
                 <thead>
                   <tr>
-                    <th>Allocation</th>
                     <th>Resource</th>
                     <th>Disaster</th>
                     <th>Quantity</th>
                     <th>Status</th>
+                    <th>Date</th>
                   </tr>
                 </thead>
 
                 <tbody>
+                  {allocations.map((allocation) => (
+                    <tr key={allocation.id}>
+                      <td>
+                        {allocation.resource_name ||
+                          allocation.resource?.name ||
+                          `Resource #${allocation.resource_id}`}
+                      </td>
 
-                  {allocations.map((allocation) => {
+                      <td>
+                        {allocation.disaster_type ||
+                          allocation.disaster?.type ||
+                          `Incident #${allocation.disaster_id}`}
+                      </td>
 
-                    const quantity = Number(
-                      allocation.quantity ||
-                        allocation.allocated_quantity ||
-                        0
-                    );
+                      <td>
+                        <strong>{allocation.quantity}</strong>
+                      </td>
 
-                    return (
-                      <tr key={allocation.id}>
+                      <td>
+                        <span className="status-badge">
+                          {allocation.status || "ALLOCATED"}
+                        </span>
+                      </td>
 
-                        <td>
-                          <div className="allocation-id">
-                            <span>
-                              #{allocation.id}
-                            </span>
-
-                            <small>
-                              Allocation
-                            </small>
-                          </div>
-                        </td>
-
-                        <td>
-                          <div className="history-resource">
-
-                            <div>
-                              <Package size={16} />
-                            </div>
-
-                            <span>
-                              {allocation.resource_name ||
-                                getResourceName(
-                                  allocation.resource_id
-                                )}
-                            </span>
-
-                          </div>
-                        </td>
-
-                        <td>
-                          <div className="history-disaster">
-
-                            <MapPinned size={16} />
-
-                            <span>
-                              {allocation.disaster_name ||
-                                getDisasterName(
-                                  allocation.disaster_id
-                                )}
-                            </span>
-
-                          </div>
-                        </td>
-
-                        <td>
-                          <span className="quantity-badge">
-                            {quantity} units
-                          </span>
-                        </td>
-
-                        <td>
-                          <span className="allocation-status">
-                            <span></span>
-                            {allocation.status ||
-                              "ALLOCATED"}
-                          </span>
-                        </td>
-
-                      </tr>
-                    );
-                  })}
-
+                      <td>
+                        {allocation.created_at
+                          ? new Date(
+                              allocation.created_at
+                            ).toLocaleString()
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
-
             </div>
           )}
-
-        </section>
-
+        </div>
       </div>
-
     </div>
   );
 }

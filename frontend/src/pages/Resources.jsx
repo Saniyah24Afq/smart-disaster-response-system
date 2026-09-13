@@ -1,773 +1,392 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Package,
-  Droplets,
-  Utensils,
-  HeartPulse,
-  Truck,
-  Home,
-  Users,
-  ShieldCheck,
   Plus,
   RefreshCw,
-  AlertTriangle,
   Boxes,
+  MapPinned,
+  Layers,
+  AlertTriangle,
 } from "lucide-react";
 import "./Resources.css";
 
 const API_URL = "http://localhost:5000";
 
-const resourceTypes = [
-  {
-    type: "FOOD",
-    label: "Food Supplies",
-    icon: Utensils,
-    color: "#16a34a",
-    unit: "packets",
-  },
-  {
-    type: "WATER",
-    label: "Water",
-    icon: Droplets,
-    color: "#0284c7",
-    unit: "litres",
-  },
-  {
-    type: "MEDICAL_KITS",
-    label: "Medical Kits",
-    icon: HeartPulse,
-    color: "#dc2626",
-    unit: "kits",
-  },
-  {
-    type: "VEHICLES",
-    label: "Vehicles",
-    icon: Truck,
-    color: "#f59e0b",
-    unit: "vehicles",
-  },
-  {
-    type: "RESCUE_EQUIPMENT",
-    label: "Rescue Equipment",
-    icon: ShieldCheck,
-    color: "#7c3aed",
-    unit: "units",
-  },
-  {
-    type: "SHELTERS",
-    label: "Shelters",
-    icon: Home,
-    color: "#0891b2",
-    unit: "shelters",
-  },
-  {
-    type: "VOLUNTEERS",
-    label: "Volunteers",
-    icon: Users,
-    color: "#db2777",
-    unit: "people",
-  },
-];
-
-function getStoredToken() {
-  const storedToken = localStorage.getItem("resq_token");
-
-  if (!storedToken) {
-    return null;
-  }
-
-  try {
-    // If token was accidentally saved as JSON
-    const parsed = JSON.parse(storedToken);
-
-    if (typeof parsed === "string") {
-      return parsed.replace(/^Bearer\s+/i, "").trim();
-    }
-
-    if (parsed?.token) {
-      return String(parsed.token)
-        .replace(/^Bearer\s+/i, "")
-        .trim();
-    }
-  } catch {
-    // Normal JWT string
-  }
-
-  return storedToken.replace(/^Bearer\s+/i, "").trim();
-}
+const getStoredToken = () => localStorage.getItem("resq_token");
 
 function Resources() {
   const [resources, setResources] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
-    category: "FOOD",
     name: "",
+    category: "",
     quantity: "",
-    unit: "packets",
+    unit: "",
     location: "",
   });
 
-  const getToken = () => {
-    const token = getStoredToken();
-
-    console.log("TOKEN EXISTS:", !!token);
-    console.log("TOKEN LENGTH:", token ? token.length : 0);
-    console.log(
-      "TOKEN START:",
-      token ? token.substring(0, 10) : "NO TOKEN"
-    );
-
-    return token;
-  };
-
-  const fetchResources = async () => {
+  const fetchResources = useCallback(async () => {
     try {
       setLoading(true);
+      setError("");
 
-      const token = getToken();
+      const token = getStoredToken();
 
       if (!token) {
-        console.error("No RESQ authentication token found.");
-        setResources([]);
-        return;
+        throw new Error("Please login again.");
       }
 
       const response = await fetch(`${API_URL}/api/resources`, {
-        method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
         },
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setResources(
-          Array.isArray(data)
-            ? data
-            : Array.isArray(data.resources)
-            ? data.resources
-            : []
-        );
-      } else {
-        console.error("Fetch resources failed:", data);
-      }
-    } catch (error) {
-      console.error("Resource fetch error:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchResources();
-  }, []);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setForm((previousForm) => ({
-      ...previousForm,
-      [name]: value,
-    }));
-
-    if (name === "category") {
-      const selectedType = resourceTypes.find(
-        (item) => item.type === value
-      );
-
-      if (selectedType) {
-        setForm((previousForm) => ({
-          ...previousForm,
-          category: value,
-          unit: selectedType.unit,
-        }));
-      }
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    try {
-      const token = getToken();
-
-      if (!token) {
-        alert("Please login again before adding a resource.");
-        return;
-      }
-
-      const selectedType = resourceTypes.find(
-        (item) => item.type === form.category
-      );
-
-      const payload = {
-        name: form.name.trim(),
-        category: form.category,
-        quantity: Number(form.quantity),
-        unit: form.unit,
-        location: form.location.trim(),
-      };
-
-      console.log("Adding resource:", {
-        ...payload,
-        tokenPresent: !!token,
-      });
-
-      const response = await fetch(`${API_URL}/api/resources`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        console.error("Add resource failed:", data);
-
-        alert(data.message || "Failed to add resource");
-        return;
+        throw new Error(data.message || "Failed to fetch resources");
       }
 
-      alert("Resource added successfully 🚑");
+      setResources(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Resources fetch error:", err);
+      setError(err.message || "Failed to load resources");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchResources();
+  }, [fetchResources]);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
+    setMessage("");
+    setError("");
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    setMessage("");
+    setError("");
+
+    if (
+      !form.name ||
+      !form.category ||
+      !form.quantity ||
+      !form.unit ||
+      !form.location
+    ) {
+      setError("Please fill all required fields.");
+      return;
+    }
+
+    if (Number(form.quantity) <= 0) {
+      setError("Quantity must be greater than 0.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const token = getStoredToken();
+
+      if (!token) {
+        throw new Error("Please login again.");
+      }
+
+      const response = await fetch(`${API_URL}/api/resources`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: form.name,
+          category: form.category,
+          quantity: Number(form.quantity),
+          unit: form.unit,
+          location: form.location,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to add resource");
+      }
+
+      setMessage("Resource added successfully.");
 
       setForm({
-        category: "FOOD",
         name: "",
+        category: "",
         quantity: "",
-        unit: selectedType?.unit || "packets",
+        unit: "",
         location: "",
       });
 
-      setShowModal(false);
+      setShowForm(false);
 
       await fetchResources();
-    } catch (error) {
-      console.error("Add resource error:", error);
-      alert("Server error while adding resource");
+    } catch (err) {
+      console.error("Add resource error:", err);
+      setError(err.message || "Failed to add resource");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const getResourceInfo = (resource) => {
-    const category =
-      resource.category || resource.resource_type || "OTHER";
-
-    return (
-      resourceTypes.find((item) => item.type === category) || {
-        type: category,
-        label: category,
-        icon: Package,
-        color: "#64748b",
-        unit: resource.unit || "units",
-      }
-    );
-  };
-
-  const getResourceStatus = (resource) => {
-    const quantity = Number(resource.quantity || 0);
-
-    if (quantity <= 0) {
-      return "EMPTY";
-    }
-
-    if (quantity <= 10) {
-      return "LOW STOCK";
-    }
-
-    return "AVAILABLE";
-  };
+  const totalResources = resources.length;
 
   const totalQuantity = resources.reduce(
-    (sum, resource) => sum + Number(resource.quantity || 0),
+    (total, resource) => total + Number(resource.quantity || 0),
     0
   );
 
-  const availableResources = resources.filter(
-    (resource) => Number(resource.quantity || 0) > 0
-  ).length;
+  const categories = new Set(
+    resources.map((resource) => resource.category).filter(Boolean)
+  ).size;
 
   const lowStock = resources.filter(
-    (resource) =>
-      Number(resource.quantity || 0) > 0 &&
-      Number(resource.quantity || 0) <= 10
+    (resource) => Number(resource.quantity || 0) <= 10
   ).length;
 
-  const outOfStock = resources.filter(
-    (resource) => Number(resource.quantity || 0) <= 0
-  ).length;
+  if (loading) {
+    return (
+      <div className="resources-page">
+        <div className="resources-loading">
+          <RefreshCw className="spin" size={30} />
+          <p>Loading resources...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="resources-page">
-      <div className="resources-background"></div>
-
       <div className="resources-container">
-
         {/* Header */}
         <div className="resources-header">
-          <div>
-            <div className="resources-title-row">
-              <div className="resources-title-icon">
-                <Boxes size={28} />
-              </div>
+          <div className="resources-heading">
+            <div className="resources-heading-icon">
+              <Boxes size={30} />
+            </div>
 
-              <div>
-                <h1>Resource Management</h1>
-
-                <p>
-                  Manage emergency supplies, vehicles, shelters and
-                  response resources.
-                </p>
-              </div>
+            <div>
+              <h1>Resource Management</h1>
+              <p>
+                Monitor emergency supplies, equipment, and response resources.
+              </p>
             </div>
           </div>
 
-          <div className="resources-actions">
+          <div className="resources-header-actions">
             <button
-              className="refresh-btn"
+              type="button"
+              className="resource-refresh-btn"
               onClick={fetchResources}
-              title="Refresh resources"
             >
               <RefreshCw size={18} />
               Refresh
             </button>
 
             <button
+              type="button"
               className="add-resource-btn"
-              onClick={() => setShowModal(true)}
+              onClick={() => {
+                setShowForm((previous) => !previous);
+                setMessage("");
+                setError("");
+              }}
             >
-              <Plus size={19} />
+              <Plus size={18} />
               Add Resource
             </button>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="resource-stats">
-
-          <div className="resource-stat-card">
-            <div className="stat-icon green">
-              <Package size={22} />
-            </div>
-
-            <div>
-              <span>Total Resources</span>
-              <strong>{resources.length}</strong>
-            </div>
+        {/* Messages */}
+        {message && (
+          <div className="resource-alert success">
+            <Package size={19} />
+            {message}
           </div>
+        )}
 
-          <div className="resource-stat-card">
-            <div className="stat-icon blue">
+        {error && (
+          <div className="resource-alert error">
+            <AlertTriangle size={19} />
+            {error}
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="resources-stats">
+          <div className="resources-stat-card">
+            <div className="resources-stat-icon blue">
               <Boxes size={22} />
             </div>
 
             <div>
-              <span>Total Quantity</span>
+              <span>Resource Types</span>
+              <strong>{totalResources}</strong>
+            </div>
+          </div>
+
+          <div className="resources-stat-card">
+            <div className="resources-stat-icon green">
+              <Package size={22} />
+            </div>
+
+            <div>
+              <span>Total Units</span>
               <strong>{totalQuantity}</strong>
             </div>
           </div>
 
-          <div className="resource-stat-card">
-            <div className="stat-icon orange">
-              <ShieldCheck size={22} />
+          <div className="resources-stat-card">
+            <div className="resources-stat-icon purple">
+              <Layers size={22} />
             </div>
 
             <div>
-              <span>Available</span>
-              <strong>{availableResources}</strong>
+              <span>Categories</span>
+              <strong>{categories}</strong>
             </div>
           </div>
 
-          <div className="resource-stat-card">
-            <div className="stat-icon red">
+          <div className="resources-stat-card">
+            <div className="resources-stat-icon red">
               <AlertTriangle size={22} />
             </div>
 
             <div>
-              <span>Low / Empty</span>
-              <strong>{lowStock + outOfStock}</strong>
+              <span>Low Stock</span>
+              <strong>{lowStock}</strong>
             </div>
           </div>
-
         </div>
 
-        {/* Resource Categories */}
-        <section className="resource-types-section">
-
-          <div className="section-heading">
-            <div>
-              <h2>Resource Categories</h2>
-
-              <p>
-                Quick overview of emergency resource categories.
-              </p>
-            </div>
-          </div>
-
-          <div className="resource-type-grid">
-
-            {resourceTypes.map((item) => {
-              const Icon = item.icon;
-
-              const count = resources.filter(
-                (resource) =>
-                  (resource.category || resource.resource_type) ===
-                  item.type
-              ).length;
-
-              const quantity = resources
-                .filter(
-                  (resource) =>
-                    (resource.category || resource.resource_type) ===
-                    item.type
-                )
-                .reduce(
-                  (sum, resource) =>
-                    sum + Number(resource.quantity || 0),
-                  0
-                );
-
-              return (
-                <div
-                  className="resource-type-card"
-                  key={item.type}
-                >
-                  <div
-                    className="resource-type-icon"
-                    style={{
-                      background: `${item.color}18`,
-                      color: item.color,
-                    }}
-                  >
-                    <Icon size={24} />
-                  </div>
-
-                  <div className="resource-type-info">
-                    <h3>{item.label}</h3>
-
-                    <p>
-                      {count} item{count !== 1 ? "s" : ""} •{" "}
-                      {quantity} units
-                    </p>
-                  </div>
-
-                  <div
-                    className="resource-type-dot"
-                    style={{
-                      background: item.color,
-                    }}
-                  ></div>
-                </div>
-              );
-            })}
-
-          </div>
-        </section>
-
-        {/* Resource List */}
-        <section className="resource-list-section">
-
-          <div className="section-heading">
-
-            <div>
-              <h2>All Resources</h2>
-
-              <p>
-                Live inventory available for disaster response.
-              </p>
-            </div>
-
-            <div className="inventory-badge">
-              <span></span>
-              Live Inventory
-            </div>
-
-          </div>
-
-          {loading ? (
-            <div className="resource-empty">
-              <RefreshCw
-                className="spin"
-                size={30}
-              />
-
-              <h3>Loading resources...</h3>
-
-              <p>
-                Fetching latest emergency inventory.
-              </p>
-            </div>
-          ) : resources.length === 0 ? (
-            <div className="resource-empty">
-
-              <Package size={42} />
-
-              <h3>No resources found</h3>
-
-              <p>
-                Add your first emergency resource to begin
-                inventory tracking.
-              </p>
-
-              <button
-                className="empty-add-btn"
-                onClick={() => setShowModal(true)}
-              >
-                <Plus size={18} />
-                Add First Resource
-              </button>
-
-            </div>
-          ) : (
-            <div className="resource-table-wrapper">
-
-              <table className="resource-table">
-
-                <thead>
-                  <tr>
-                    <th>Resource</th>
-                    <th>Type</th>
-                    <th>Quantity</th>
-                    <th>Location</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-
-                  {resources.map((resource) => {
-                    const info = getResourceInfo(resource);
-                    const Icon = info.icon;
-
-                    const quantity = Number(
-                      resource.quantity || 0
-                    );
-
-                    const status = getResourceStatus(resource);
-
-                    let stockClass = "stock-good";
-
-                    if (quantity <= 0) {
-                      stockClass = "stock-empty";
-                    } else if (quantity <= 10) {
-                      stockClass = "stock-low";
-                    }
-
-                    return (
-                      <tr key={resource.id}>
-
-                        <td>
-                          <div className="resource-name-cell">
-
-                            <div
-                              className="mini-resource-icon"
-                              style={{
-                                color: info.color,
-                                background: `${info.color}18`,
-                              }}
-                            >
-                              <Icon size={19} />
-                            </div>
-
-                            <div>
-                              <strong>
-                                {resource.name || info.label}
-                              </strong>
-
-                              <small>
-                                Resource #{resource.id}
-                              </small>
-                            </div>
-
-                          </div>
-                        </td>
-
-                        <td>
-                          <span className="type-pill">
-                            {info.label}
-                          </span>
-                        </td>
-
-                        <td>
-                          <div
-                            className={`quantity-cell ${stockClass}`}
-                          >
-                            <strong>{quantity}</strong>
-
-                            <span>
-                              {resource.unit || info.unit || "units"}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td>
-                          <span className="location-text">
-                            {resource.location ||
-                              "Not specified"}
-                          </span>
-                        </td>
-
-                        <td>
-                          <span
-                            className={`status-pill ${
-                              status === "AVAILABLE"
-                                ? "status-available"
-                                : status === "LOW STOCK"
-                                ? "status-allocated"
-                                : "status-unavailable"
-                            }`}
-                          >
-                            <span></span>
-                            {status}
-                          </span>
-                        </td>
-
-                      </tr>
-                    );
-                  })}
-
-                </tbody>
-
-              </table>
-            </div>
-          )}
-
-        </section>
-      </div>
-
-      {/* Add Resource Modal */}
-      {showModal && (
-        <div
-          className="resource-modal-overlay"
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="resource-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-
-            <div className="modal-header">
-
+        {/* Add Form */}
+        {showForm && (
+          <div className="resources-form-card">
+            <div className="resources-form-heading">
               <div>
-                <div className="modal-icon">
-                  <Plus size={22} />
-                </div>
-
                 <h2>Add Emergency Resource</h2>
-
                 <p>
-                  Add a new resource to the RESQ inventory.
+                  Register food, water, medical supplies, vehicles, equipment,
+                  or shelters.
                 </p>
               </div>
-
-              <button
-                className="modal-close"
-                onClick={() => setShowModal(false)}
-              >
-                ×
-              </button>
-
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="resources-form">
+              <div className="resource-form-group">
+                <label htmlFor="name">Resource Name</label>
 
-              <div className="form-group">
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="e.g. Drinking Water"
+                  required
+                />
+              </div>
 
-                <label>Resource Type</label>
+              <div className="resource-form-group">
+                <label htmlFor="category">Category</label>
 
                 <select
+                  id="category"
                   name="category"
                   value={form.category}
                   onChange={handleChange}
                   required
                 >
-                  {resourceTypes.map((item) => (
-                    <option
-                      key={item.type}
-                      value={item.type}
-                    >
-                      {item.label}
-                    </option>
-                  ))}
+                  <option value="">Select category</option>
+                  <option value="FOOD">Food</option>
+                  <option value="WATER">Water</option>
+                  <option value="MEDICAL">Medical</option>
+                  <option value="VEHICLE">Vehicle</option>
+                  <option value="RESCUE_EQUIPMENT">
+                    Rescue Equipment
+                  </option>
+                  <option value="SHELTER">Shelter</option>
+                  <option value="VOLUNTEER">Volunteer</option>
+                  <option value="OTHER">Other</option>
                 </select>
-
               </div>
 
-              <div className="form-group">
-
-                <label>Resource Name</label>
+              <div className="resource-form-group">
+                <label htmlFor="quantity">Quantity</label>
 
                 <input
-                  type="text"
-                  name="name"
-                  value={form.name}
+                  id="quantity"
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  value={form.quantity}
                   onChange={handleChange}
-                  placeholder="e.g. Drinking Water Bottles"
+                  placeholder="e.g. 500"
                   required
                 />
-
               </div>
 
-              <div className="form-row">
+              <div className="resource-form-group">
+                <label htmlFor="unit">Unit</label>
 
-                <div className="form-group">
+                <input
+                  id="unit"
+                  name="unit"
+                  type="text"
+                  value={form.unit}
+                  onChange={handleChange}
+                  placeholder="e.g. bottles"
+                  required
+                />
+              </div>
 
-                  <label>Quantity</label>
+              <div className="resource-form-group">
+                <label htmlFor="location">Location</label>
 
-                  <input
-                    type="number"
-                    name="quantity"
-                    min="0"
-                    value={form.quantity}
-                    onChange={handleChange}
-                    placeholder="500"
-                    required
-                  />
-
-                </div>
-
-                <div className="form-group">
-
-                  <label>Unit</label>
+                <div className="input-with-icon">
+                  <MapPinned size={18} />
 
                   <input
+                    id="location"
+                    name="location"
                     type="text"
-                    name="unit"
-                    value={form.unit}
+                    value={form.location}
                     onChange={handleChange}
-                    placeholder="packets"
+                    placeholder="e.g. Mumbai Central Warehouse"
                     required
                   />
-
                 </div>
-
               </div>
 
-              <div className="form-group">
-
-                <label>Location</label>
-
-                <input
-                  type="text"
-                  name="location"
-                  value={form.location}
-                  onChange={handleChange}
-                  placeholder="e.g. Mumbai Central Warehouse"
-                  required
-                />
-
-              </div>
-
-              <div className="modal-footer">
-
+              <div className="resources-form-actions">
                 <button
                   type="button"
-                  className="cancel-btn"
-                  onClick={() => setShowModal(false)}
+                  className="cancel-resource-btn"
+                  onClick={() => setShowForm(false)}
                 >
                   Cancel
                 </button>
@@ -775,17 +394,135 @@ function Resources() {
                 <button
                   type="submit"
                   className="save-resource-btn"
+                  disabled={submitting}
                 >
-                  <Plus size={18} />
-                  Add Resource
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="spin" size={18} />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={18} />
+                      Add Resource
+                    </>
+                  )}
                 </button>
-
               </div>
-
             </form>
           </div>
+        )}
+
+        {/* Resource List */}
+        <div className="resources-list-card">
+          <div className="resources-list-heading">
+            <div>
+              <h2>Available Resources</h2>
+              <p>Current stock available for emergency response.</p>
+            </div>
+
+            <span className="resource-count">
+              {resources.length} resources
+            </span>
+          </div>
+
+          {resources.length === 0 ? (
+            <div className="resources-empty">
+              <Package size={45} />
+              <h3>No resources available</h3>
+              <p>Add your first emergency resource to get started.</p>
+
+              <button
+                type="button"
+                className="add-resource-btn"
+                onClick={() => setShowForm(true)}
+              >
+                <Plus size={18} />
+                Add Resource
+              </button>
+            </div>
+          ) : (
+            <div className="resources-table-wrapper">
+              <table className="resources-table">
+                <thead>
+                  <tr>
+                    <th>Resource</th>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                    <th>Location</th>
+                    <th>Availability</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {resources.map((resource) => {
+                    const quantity = Number(resource.quantity || 0);
+
+                    let availability = "Available";
+
+                    if (quantity === 0) {
+                      availability = "Out of Stock";
+                    } else if (quantity <= 10) {
+                      availability = "Low Stock";
+                    }
+
+                    return (
+                      <tr key={resource.id}>
+                        <td>
+                          <div className="resource-table-name">
+                            <div className="resource-table-icon">
+                              <Package size={18} />
+                            </div>
+
+                            <div>
+                              <strong>{resource.name}</strong>
+                              <span>#{resource.id}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td>
+                          <span className="category-badge">
+                            {resource.category || "OTHER"}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div className="quantity-cell">
+                            <strong>{quantity}</strong>
+                            <span>{resource.unit || "units"}</span>
+                          </div>
+                        </td>
+
+                        <td>
+                          <div className="location-cell">
+                            <MapPinned size={16} />
+                            {resource.location || "Not specified"}
+                          </div>
+                        </td>
+
+                        <td>
+                          <span
+                            className={`availability-badge ${
+                              quantity === 0
+                                ? "out"
+                                : quantity <= 10
+                                  ? "low"
+                                  : "available"
+                            }`}
+                          >
+                            {availability}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
