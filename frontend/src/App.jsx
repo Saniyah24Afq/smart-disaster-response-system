@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   LockKeyhole,
   UserPlus,
+  LogOut,
 } from "lucide-react";
 
 import { useState } from "react";
@@ -38,6 +39,10 @@ import Notifications from "./pages/Notifications";
 
 import "./App.css";
 
+/* =====================================================
+   API CONFIGURATION
+===================================================== */
+
 const API_URL = "http://localhost:5000";
 
 /* =====================================================
@@ -51,16 +56,30 @@ const getValidToken = () => {
     return null;
   }
 
-  const parts = token.trim().split(".");
+  const cleanToken = token.trim();
+  const parts = cleanToken.split(".");
 
   if (parts.length !== 3) {
     console.warn("Invalid stored RESQ token. Removing it.");
+
     localStorage.removeItem("resq_token");
     localStorage.removeItem("resq_user");
+
     return null;
   }
 
-  return token.trim();
+  return cleanToken;
+};
+
+/* =====================================================
+   LOGOUT HELPER
+===================================================== */
+
+const logoutUser = () => {
+  localStorage.removeItem("resq_token");
+  localStorage.removeItem("resq_user");
+
+  window.location.href = "/login";
 };
 
 /* =====================================================
@@ -97,22 +116,34 @@ function LoginForm({ standalone = false }) {
       localStorage.removeItem("resq_token");
       localStorage.removeItem("resq_user");
 
-      const response = await fetch(`${API_URL}/api/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}/api/auth/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password: password,
+          }),
+        }
+      );
 
-      const data = await response.json();
+      let data = {};
+
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(
+          "Server returned an invalid response."
+        );
+      }
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Invalid email or password"
+          data.message ||
+            "Invalid email or password."
         );
       }
 
@@ -142,7 +173,10 @@ function LoginForm({ standalone = false }) {
         );
       }
 
-      localStorage.setItem("resq_token", cleanToken);
+      localStorage.setItem(
+        "resq_token",
+        cleanToken
+      );
 
       localStorage.setItem(
         "resq_user",
@@ -157,7 +191,8 @@ function LoginForm({ standalone = false }) {
       console.error("Login error:", error);
 
       setLoginError(
-        error.message || "Something went wrong during login."
+        error.message ||
+          "Something went wrong during login."
       );
     } finally {
       setIsLoggingIn(false);
@@ -171,10 +206,13 @@ function LoginForm({ standalone = false }) {
           ? "login-modal standalone-login"
           : "login-modal"
       }
-      onClick={(event) => event.stopPropagation()}
+      onClick={(event) =>
+        event.stopPropagation()
+      }
     >
       {!standalone && (
         <button
+          type="button"
           className="login-close"
           onClick={() => navigate("/")}
           aria-label="Close login"
@@ -182,6 +220,8 @@ function LoginForm({ standalone = false }) {
           <X size={20} />
         </button>
       )}
+
+      {/* LOGIN VISUAL */}
 
       <div className="login-visual">
         <div className="login-visual-glow"></div>
@@ -214,7 +254,9 @@ function LoginForm({ standalone = false }) {
           </div>
 
           <div>
-            <strong>Emergency network</strong>
+            <strong>
+              Emergency network
+            </strong>
 
             <small>
               All systems operational
@@ -233,6 +275,8 @@ function LoginForm({ standalone = false }) {
         </div>
       </div>
 
+      {/* LOGIN FORM */}
+
       <div className="login-form-area">
         <span className="login-label">
           WELCOME BACK
@@ -247,6 +291,8 @@ function LoginForm({ standalone = false }) {
         </p>
 
         <form onSubmit={handleLogin}>
+          {/* EMAIL */}
+
           <label htmlFor="login-email">
             Email address
           </label>
@@ -261,6 +307,8 @@ function LoginForm({ standalone = false }) {
             }
             required
           />
+
+          {/* PASSWORD */}
 
           <label htmlFor="login-password">
             Password
@@ -286,7 +334,9 @@ function LoginForm({ standalone = false }) {
               type="button"
               className="password-toggle"
               onClick={() =>
-                setShowPassword(!showPassword)
+                setShowPassword(
+                  !showPassword
+                )
               }
               aria-label={
                 showPassword
@@ -301,6 +351,8 @@ function LoginForm({ standalone = false }) {
               )}
             </button>
           </div>
+
+          {/* ROLE */}
 
           <label>
             Login as
@@ -353,6 +405,8 @@ function LoginForm({ standalone = false }) {
             </button>
           </div>
 
+          {/* LOGIN ERROR */}
+
           {loginError && (
             <div
               className="login-error"
@@ -365,6 +419,8 @@ function LoginForm({ standalone = false }) {
               </span>
             </div>
           )}
+
+          {/* OPTIONS */}
 
           <div className="login-options">
             <label className="remember">
@@ -379,6 +435,8 @@ function LoginForm({ standalone = false }) {
               Forgot password?
             </a>
           </div>
+
+          {/* LOGIN BUTTON */}
 
           <button
             type="submit"
@@ -395,6 +453,8 @@ function LoginForm({ standalone = false }) {
           </button>
         </form>
 
+        {/* SIGNUP */}
+
         <button
           type="button"
           className="signup-link-button"
@@ -406,6 +466,8 @@ function LoginForm({ standalone = false }) {
 
           Don't have an account? Create one
         </button>
+
+        {/* SECURITY */}
 
         <div className="login-divider">
           <span>
@@ -475,8 +537,13 @@ function LandingPage() {
             </div>
 
             <div className="brand-text">
-              <span>RESQ</span>
-              <small>SMART RESPONSE</small>
+              <span>
+                RESQ
+              </span>
+
+              <small>
+                SMART RESPONSE
+              </small>
             </div>
           </a>
 
@@ -522,6 +589,7 @@ function LandingPage() {
             </a>
 
             <button
+              type="button"
               className="mobile-login"
               onClick={openLogin}
             >
@@ -533,12 +601,15 @@ function LandingPage() {
           <div className="nav-actions">
 
             <button
+              type="button"
               className="notification-btn"
               aria-label="Notifications"
               title="Notifications"
               onClick={() => {
                 setMenuOpen(false);
-                navigate("/notifications");
+                navigate(
+                  "/notifications"
+                );
               }}
             >
               <Bell size={19} />
@@ -546,6 +617,7 @@ function LandingPage() {
             </button>
 
             <button
+              type="button"
               className="login-btn"
               onClick={openLogin}
             >
@@ -554,6 +626,7 @@ function LandingPage() {
             </button>
 
             <button
+              type="button"
               className="menu-btn"
               aria-label="Toggle menu"
               onClick={() =>
@@ -574,6 +647,7 @@ function LandingPage() {
       {/* HERO */}
 
       <main>
+
         <section
           className="hero-section"
           id="home"
@@ -582,10 +656,39 @@ function LandingPage() {
 
             <div className="hero-content">
 
-              <div className="status-pill">
-                <span className="status-pulse"></span>
+              <div
+                className="status-pill"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "flex-start",
+                  alignSelf: "flex-start",
+                  width: "max-content",
+                  minWidth: "max-content",
+                  maxWidth: "none",
+                  whiteSpace: "nowrap",
+                  flexWrap: "nowrap",
+                  flexShrink: 0,
+                  gap: "9px",
+                  position: "relative",
+                  zIndex: 10,
+                }}
+              >
+                <span
+                  className="status-pulse"
+                  style={{
+                    flexShrink: 0,
+                    display: "inline-block",
+                  }}
+                ></span>
 
-                <span>
+                <span
+                  style={{
+                    whiteSpace: "nowrap",
+                    display: "inline-block",
+                    flexShrink: 0,
+                  }}
+                >
                   24/7 Emergency Response Network
                 </span>
               </div>
@@ -610,7 +713,9 @@ function LandingPage() {
                   type="button"
                   className="primary-btn"
                   onClick={() =>
-                    navigate("/report-disaster")
+                    navigate(
+                      "/report-disaster"
+                    )
                   }
                 >
                   <HeartPulse size={19} />
@@ -652,6 +757,8 @@ function LandingPage() {
 
               </div>
             </div>
+
+            {/* MAP */}
 
             <div
               className="hero-visual"
@@ -701,7 +808,9 @@ function LandingPage() {
                 <div className="map-overlay">
 
                   <div>
-                    <small>LIVE STATUS</small>
+                    <small>
+                      LIVE STATUS
+                    </small>
 
                     <strong>
                       Emergency Network
@@ -716,6 +825,8 @@ function LandingPage() {
                 </div>
               </div>
 
+              {/* RESPONSE CARD */}
+
               <div className="floating-card response-card">
 
                 <div className="floating-icon blue-icon">
@@ -723,7 +834,9 @@ function LandingPage() {
                 </div>
 
                 <div>
-                  <strong>48 Teams</strong>
+                  <strong>
+                    48 Teams
+                  </strong>
 
                   <small>
                     Available now
@@ -734,7 +847,10 @@ function LandingPage() {
                   className="check-icon"
                   size={19}
                 />
+
               </div>
+
+              {/* ALERT CARD */}
 
               <div className="floating-card alert-card">
 
@@ -743,7 +859,9 @@ function LandingPage() {
                 </div>
 
                 <div>
-                  <strong>Flood Alert</strong>
+                  <strong>
+                    Flood Alert
+                  </strong>
 
                   <small>
                     2.4 km away
@@ -769,7 +887,9 @@ function LandingPage() {
               </div>
 
               <div>
-                <strong>&lt; 5 min</strong>
+                <strong>
+                  &lt; 5 min
+                </strong>
 
                 <span>
                   Average response time
@@ -787,7 +907,9 @@ function LandingPage() {
               </div>
 
               <div>
-                <strong>1,200+</strong>
+                <strong>
+                  1,200+
+                </strong>
 
                 <span>
                   Response volunteers
@@ -805,7 +927,9 @@ function LandingPage() {
               </div>
 
               <div>
-                <strong>24/7</strong>
+                <strong>
+                  24/7
+                </strong>
 
                 <span>
                   Monitoring & support
@@ -826,7 +950,9 @@ function LandingPage() {
 
           <div className="section-heading">
 
-            <span>HOW IT WORKS</span>
+            <span>
+              HOW IT WORKS
+            </span>
 
             <h2>
               One platform.{" "}
@@ -868,7 +994,9 @@ function LandingPage() {
               <button
                 type="button"
                 onClick={() =>
-                  navigate("/report-disaster")
+                  navigate(
+                    "/report-disaster"
+                  )
                 }
               >
                 Report now
@@ -1045,24 +1173,39 @@ function LandingPage() {
                 <div className="mini-stats">
 
                   <div>
-                    <strong>86%</strong>
-                    <span>Resolved</span>
+                    <strong>
+                      86%
+                    </strong>
+
+                    <span>
+                      Resolved
+                    </span>
                   </div>
 
                   <div>
-                    <strong>32</strong>
-                    <span>Active</span>
+                    <strong>
+                      32
+                    </strong>
+
+                    <span>
+                      Active
+                    </span>
                   </div>
 
                   <div>
-                    <strong>94%</strong>
-                    <span>Resources</span>
+                    <strong>
+                      94%
+                    </strong>
+
+                    <span>
+                      Resources
+                    </span>
                   </div>
 
                 </div>
-
               </div>
             </div>
+
           </div>
         </section>
 
@@ -1102,6 +1245,7 @@ function LandingPage() {
 
           </div>
         </section>
+
       </main>
 
       {/* FOOTER */}
@@ -1173,7 +1317,9 @@ function LandingPage() {
               <button
                 type="button"
                 onClick={() =>
-                  navigate("/report-disaster")
+                  navigate(
+                    "/report-disaster"
+                  )
                 }
               >
                 Report Disaster
@@ -1227,13 +1373,166 @@ function LandingPage() {
 }
 
 /* =====================================================
+   DASHBOARD LOGOUT CONTROL
+===================================================== */
+
+function DashboardLogout() {
+  const [showLogout, setShowLogout] = useState(false);
+
+  let user = {};
+
+  try {
+    user = JSON.parse(
+      localStorage.getItem("resq_user") || "{}"
+    );
+  } catch {
+    user = {};
+  }
+
+  const userName =
+    user.name ||
+    user.email?.split("@")[0] ||
+    "User";
+
+  const userRole =
+    user.role === "RESPONSE_TEAM"
+      ? "Response Officer"
+      : user.role === "ADMIN"
+        ? "Administrator"
+        : "Citizen";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: "112px",
+        right: "28px",
+        zIndex: 9999,
+      }}
+    >
+      <button
+        type="button"
+        onClick={() =>
+          setShowLogout(!showLogout)
+        }
+        aria-label="Account menu"
+        style={{
+          width: "44px",
+          height: "44px",
+          borderRadius: "50%",
+          border: "1px solid #dbe5e1",
+          background: "#ffffff",
+          color: "#0f513f",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 800,
+          fontSize: "16px",
+          boxShadow:
+            "0 6px 20px rgba(15, 23, 42, 0.10)",
+        }}
+        title="Account"
+      >
+        {(userName.charAt(0) || "U").toUpperCase()}
+      </button>
+
+      {showLogout && (
+        <div
+          style={{
+            position: "absolute",
+            top: "52px",
+            right: "0",
+            width: "220px",
+            background: "#ffffff",
+            border: "1px solid #dce6e2",
+            borderRadius: "14px",
+            padding: "12px",
+            boxShadow:
+              "0 16px 40px rgba(15, 23, 42, 0.16)",
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 9px 12px",
+              borderBottom:
+                "1px solid #edf2f0",
+              marginBottom: "8px",
+            }}
+          >
+            <strong
+              style={{
+                display: "block",
+                color: "#0b1f3a",
+                fontSize: "14px",
+              }}
+            >
+              {userName}
+            </strong>
+
+            <span
+              style={{
+                display: "block",
+                marginTop: "4px",
+                color: "#718096",
+                fontSize: "12px",
+              }}
+            >
+              {userRole}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={logoutUser}
+            style={{
+              width: "100%",
+              border: "0",
+              borderRadius: "10px",
+              background: "#fff1f2",
+              color: "#dc2626",
+              padding: "11px 12px",
+              cursor: "pointer",
+              fontWeight: 750,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              fontSize: "13px",
+            }}
+          >
+            <LogOut size={17} />
+            Logout
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================
    ROLE BASED DASHBOARD
 ===================================================== */
 
 function DashboardRouter() {
-  const user = JSON.parse(
-    localStorage.getItem("resq_user") || "{}"
-  );
+  let user = {};
+
+  try {
+    user = JSON.parse(
+      localStorage.getItem(
+        "resq_user"
+      ) || "{}"
+    );
+  } catch (error) {
+    console.error(
+      "Unable to read RESQ user:",
+      error
+    );
+
+    localStorage.removeItem(
+      "resq_user"
+    );
+  }
 
   const role = user.role;
   const token = getValidToken();
@@ -1248,7 +1547,10 @@ function DashboardRouter() {
           justifyContent: "center",
           flexDirection: "column",
           gap: "15px",
-          fontFamily: "Inter, sans-serif",
+          fontFamily:
+            "Inter, sans-serif",
+          padding: "20px",
+          textAlign: "center",
         }}
       >
         <ShieldCheck size={50} />
@@ -1262,10 +1564,17 @@ function DashboardRouter() {
         </p>
 
         <button
+          type="button"
           onClick={() => {
-            localStorage.removeItem("resq_token");
-            localStorage.removeItem("resq_user");
-            window.location.href = "/";
+            localStorage.removeItem(
+              "resq_token"
+            );
+
+            localStorage.removeItem(
+              "resq_user"
+            );
+
+            window.location.href = "/login";
           }}
           style={{
             padding: "12px 22px",
@@ -1281,11 +1590,17 @@ function DashboardRouter() {
     );
   }
 
-  if (role === "RESPONSE_TEAM") {
-    return <ResponseTeamDashboard />;
-  }
+  return (
+    <>
+      <DashboardLogout />
 
-  return <Dashboard />;
+      {role === "RESPONSE_TEAM" ? (
+        <ResponseTeamDashboard />
+      ) : (
+        <Dashboard />
+      )}
+    </>
+  );
 }
 
 /* =====================================================
@@ -1295,6 +1610,7 @@ function DashboardRouter() {
 function App() {
   return (
     <BrowserRouter>
+
       <Routes>
 
         {/* LANDING */}
@@ -1304,7 +1620,7 @@ function App() {
           element={<LandingPage />}
         />
 
-        {/* DIRECT LOGIN PAGE */}
+        {/* LOGIN */}
 
         <Route
           path="/login"
@@ -1336,7 +1652,9 @@ function App() {
 
         <Route
           path="/resource-allocation"
-          element={<ResourceAllocation />}
+          element={
+            <ResourceAllocation />
+          }
         />
 
         {/* NOTIFICATIONS */}
@@ -1354,6 +1672,7 @@ function App() {
         />
 
       </Routes>
+
     </BrowserRouter>
   );
 }
