@@ -1,0 +1,29 @@
+{
+  "dependencies": {
+    "lucide-react": "^1.44.0",
+    "react-router-dom": "^7.18.3"
+  },
+  "name": "smart-disaster-response-system",
+  "version": "1.0.0",
+  "description": "The Smart Disaster Response and Resource Management System is a web-based platform designed to improve disaster reporting, emergency response, resource management, and coordination between citizens, administrators, and response teams.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Saniyah24Afq/smart-disaster-response-system.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Saniyah24Afq/smart-disaster-response-system/issues"
+  },
+  "homepage": "https://github.com/Saniyah24Afq/smart-disaster-response-system#readme"
+}
