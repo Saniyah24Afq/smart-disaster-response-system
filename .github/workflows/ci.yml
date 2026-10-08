@@ -62,11 +62,12 @@ jobs:
         run: npm ci
 
       - name: Validate backend syntax
-        run: node --check index.js
+        run: node --check server.js
 
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
+
     needs:
       - frontend
       - backend
@@ -74,6 +75,16 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+
+      - name: Create CI environment file
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          DB_NAME=resq
+          DB_USER=resq
+          DB_PASSWORD=resq_ci_password
+          JWT_SECRET=resq_ci_secret
+          EOF
 
       - name: Build Docker images
         run: docker compose build
