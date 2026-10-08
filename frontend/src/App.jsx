@@ -267,7 +267,10 @@ function LoginForm({ standalone = false, onBack }) {
 
       {/* LOGIN FORM */}
 
-      <div className="login-form-area" style={{ position: "relative" }}>
+      <div
+        className="login-form-area"
+        style={{ position: "relative" }}
+      >
         <button
           type="button"
           className="login-back-button"
@@ -300,7 +303,8 @@ function LoginForm({ standalone = false, onBack }) {
             fontSize: "13px",
             fontWeight: 700,
             lineHeight: 1,
-            boxShadow: "0 4px 14px rgba(15, 23, 42, 0.08)",
+            boxShadow:
+              "0 4px 14px rgba(15, 23, 42, 0.08)",
           }}
         >
           <ArrowLeft size={17} />
@@ -1388,7 +1392,6 @@ function LandingPage() {
           </span>
 
         </div>
-
       </footer>
 
       {/* LOGIN MODAL */}
@@ -1415,7 +1418,8 @@ function LandingPage() {
 function DashboardLogout() {
   const [showLogout, setShowLogout] = useState(false);
 
-  let user = {};
+  // FIXED: no useless initial assignment
+  let user;
 
   try {
     user = JSON.parse(
@@ -1551,7 +1555,8 @@ function DashboardLogout() {
 ===================================================== */
 
 function DashboardRouter() {
-  let user = {};
+  // FIXED: no useless initial assignment
+  let user;
 
   try {
     user = JSON.parse(
