@@ -1,4 +1,4 @@
-name: RESQ CI
+name: RESQ CI Pipeline
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   frontend:
-    name: Frontend CI
+    name: Frontend Build & Lint
     runs-on: ubuntu-latest
 
     defaults:
@@ -20,7 +20,7 @@ jobs:
         working-directory: frontend
 
     steps:
-      - name: Checkout repository
+      - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -40,7 +40,7 @@ jobs:
         run: npm run build
 
   backend:
-    name: Backend CI
+    name: Backend Validation
     runs-on: ubuntu-latest
 
     defaults:
@@ -48,7 +48,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - name: Checkout repository
+      - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -61,5 +61,19 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
 
-      - name: Check backend syntax
-        run: node --check server.js
+      - name: Validate backend syntax
+        run: node --check index.js
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs:
+      - frontend
+      - backend
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Build Docker images
+        run: docker compose build

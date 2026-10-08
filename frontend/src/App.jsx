@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  ArrowLeft,
   Bell,
   CheckCircle2,
   Clock3,
@@ -23,7 +24,7 @@ import {
 import { useState } from "react";
 
 import {
-  BrowserRouter,
+  HashRouter,
   Routes,
   Route,
   useNavigate,
@@ -79,14 +80,14 @@ const logoutUser = () => {
   localStorage.removeItem("resq_token");
   localStorage.removeItem("resq_user");
 
-  window.location.href = "/login";
+  window.location.hash = "#/login";
 };
 
 /* =====================================================
    LOGIN FORM
 ===================================================== */
 
-function LoginForm({ standalone = false }) {
+function LoginForm({ standalone = false, onBack }) {
   const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
@@ -210,17 +211,6 @@ function LoginForm({ standalone = false }) {
         event.stopPropagation()
       }
     >
-      {!standalone && (
-        <button
-          type="button"
-          className="login-close"
-          onClick={() => navigate("/")}
-          aria-label="Close login"
-        >
-          <X size={20} />
-        </button>
-      )}
-
       {/* LOGIN VISUAL */}
 
       <div className="login-visual">
@@ -277,7 +267,46 @@ function LoginForm({ standalone = false }) {
 
       {/* LOGIN FORM */}
 
-      <div className="login-form-area">
+      <div className="login-form-area" style={{ position: "relative" }}>
+        <button
+          type="button"
+          className="login-back-button"
+          onClick={() => {
+            if (onBack) {
+              onBack();
+              return;
+            }
+
+            navigate("/");
+          }}
+          aria-label="Go back"
+          title="Back"
+          style={{
+            position: "absolute",
+            top: "22px",
+            left: "24px",
+            zIndex: 30,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "7px",
+            height: "40px",
+            padding: "0 14px",
+            border: "1px solid #d9e7e2",
+            borderRadius: "10px",
+            background: "#ffffff",
+            color: "#087f5b",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: 700,
+            lineHeight: 1,
+            boxShadow: "0 4px 14px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <ArrowLeft size={17} />
+          <span>Back</span>
+        </button>
+
         <span className="login-label">
           WELCOME BACK
         </span>
@@ -491,9 +520,14 @@ function LoginForm({ standalone = false }) {
 ===================================================== */
 
 function LoginPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="login-page">
-      <LoginForm standalone />
+      <LoginForm
+        standalone
+        onBack={() => navigate("/")}
+      />
     </div>
   );
 }
@@ -1364,7 +1398,9 @@ function LandingPage() {
           className="login-modal-overlay"
           onClick={closeLogin}
         >
-          <LoginForm />
+          <LoginForm
+            onBack={closeLogin}
+          />
         </div>
       )}
 
@@ -1574,7 +1610,7 @@ function DashboardRouter() {
               "resq_user"
             );
 
-            window.location.href = "/login";
+            window.location.hash = "#/login";
           }}
           style={{
             padding: "12px 22px",
@@ -1609,7 +1645,7 @@ function DashboardRouter() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
 
       <Routes>
 
@@ -1673,7 +1709,7 @@ function App() {
 
       </Routes>
 
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
