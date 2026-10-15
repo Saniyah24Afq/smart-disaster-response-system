@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -19,23 +19,21 @@ import {
   Activity,
   Phone,
   UserRound,
-  MapPinned as LocationIcon,
-  ClipboardCheck,
   Truck,
-} from 'lucide-react'
+} from 'lucide-react';
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
   useMap,
-} from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import './Dashboard.css'
+} from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import './Dashboard.css';
 
-const API_URL = 'http://localhost:5000'
-const DEFAULT_CENTER = [19.076, 72.8777]
+const API_URL = 'http://localhost:5000';
+const DEFAULT_CENTER = [19.076, 72.8777];
 
 const COLORS = {
   navy: '#10243e',
@@ -46,7 +44,7 @@ const COLORS = {
   text: '#334155',
   border: '#e2e8f0',
   background: '#f5f8fc',
-}
+};
 
 const statusColors = {
   REPORTED: { bg: '#fff7ed', color: '#c2410c' },
@@ -55,13 +53,13 @@ const statusColors = {
   IN_PROGRESS: { bg: '#ecfeff', color: '#0e7490' },
   RESOLVED: { bg: '#dcfce7', color: '#166534' },
   REJECTED: { bg: '#fee2e2', color: '#b91c1c' },
-}
+};
 
 const teamStatusColors = {
   AVAILABLE: { bg: '#dcfce7', color: '#166534' },
   BUSY: { bg: '#ffedd5', color: '#c2410c' },
   OFFLINE: { bg: '#f1f5f9', color: '#475569' },
-}
+};
 
 const markerIcon = L.icon({
   iconUrl:
@@ -74,14 +72,14 @@ const markerIcon = L.icon({
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
   shadowSize: [41, 41],
-})
+});
 
 function getToken() {
   return (
     localStorage.getItem('resq_token') ||
     sessionStorage.getItem('resq_token') ||
     ''
-  )
+  );
 }
 
 function getStoredUser() {
@@ -90,32 +88,32 @@ function getStoredUser() {
       localStorage.getItem('resq_user') ||
         sessionStorage.getItem('resq_user') ||
         'null',
-    )
+    );
   } catch {
-    return null
+    return null;
   }
 }
 
 function getArray(data, key) {
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.[key])) return data[key]
-  if (Array.isArray(data?.data)) return data.data
-  if (Array.isArray(data?.rows)) return data.rows
-  return []
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.[key])) return data[key];
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.rows)) return data.rows;
+  return [];
 }
 
 function formatStatus(value) {
   return String(value || 'REPORTED')
     .replaceAll('_', ' ')
     .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function formatDate(value) {
-  if (!value) return '—'
+  if (!value) return '—';
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
 
   return date.toLocaleString('en-IN', {
     day: '2-digit',
@@ -123,21 +121,21 @@ function formatDate(value) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  });
 }
 
 function getSeverityColor(severity) {
-  const value = String(severity || 'MEDIUM').toUpperCase()
+  const value = String(severity || 'MEDIUM').toUpperCase();
 
-  if (value === 'CRITICAL') return '#b91c1c'
-  if (value === 'HIGH') return '#ea580c'
-  if (value === 'MEDIUM') return '#ca8a04'
-  return '#15803d'
+  if (value === 'CRITICAL') return '#b91c1c';
+  if (value === 'HIGH') return '#ea580c';
+  if (value === 'MEDIUM') return '#ca8a04';
+  return '#15803d';
 }
 
 function getCoordinates(item) {
-  const latitude = Number(item?.latitude)
-  const longitude = Number(item?.longitude)
+  const latitude = Number(item?.latitude);
+  const longitude = Number(item?.longitude);
 
   if (
     item?.latitude === null ||
@@ -153,44 +151,47 @@ function getCoordinates(item) {
     longitude < -180 ||
     longitude > 180
   ) {
-    return null
+    return null;
   }
 
-  return [latitude, longitude]
+  return [latitude, longitude];
 }
 
 function MapRecenter({ center }) {
-  const map = useMap()
+  const map = useMap();
 
   useEffect(() => {
     if (center && center.length === 2) {
       map.setView(center, Math.max(map.getZoom(), 12), {
         animate: true,
-      })
+      });
     }
-  }, [center, map])
+  }, [center, map]);
 
-  return null
+  return null;
 }
 
 function MapSizeFix() {
-  const map = useMap()
+  const map = useMap();
 
   useEffect(() => {
-    const timer = window.setTimeout(() => map.invalidateSize(), 150)
-    return () => window.clearTimeout(timer)
-  }, [map])
+    const timer = window.setTimeout(() => map.invalidateSize(), 150);
+    return () => window.clearTimeout(timer);
+  }, [map]);
 
-  return null
+  return null;
 }
 
-function StatCard({ icon: Icon, label, value, color, note }) {
+function StatCard({ icon, label, value, color, note }) {
+  const StatIcon = icon;
+
   return (
     <section style={styles.card}>
       <div style={styles.statHeader}>
         <span style={{ color: COLORS.muted, fontSize: 12, fontWeight: 650 }}>
           {label}
         </span>
+
         <span
           style={{
             width: 39,
@@ -203,13 +204,14 @@ function StatCard({ icon: Icon, label, value, color, note }) {
             flexShrink: 0,
           }}
         >
-          <Icon size={20} />
+          <StatIcon size={20} />
         </span>
       </div>
+
       <div style={styles.statValue}>{value}</div>
       <div style={styles.statNote}>{note}</div>
     </section>
-  )
+  );
 }
 
 function ActionButton({
@@ -235,7 +237,7 @@ function ActionButton({
     >
       {children}
     </button>
-  )
+  );
 }
 
 const styles = {
@@ -300,21 +302,20 @@ const styles = {
     fontSize: 12,
     lineHeight: 1.6,
   },
-}
+};
 
 function TeamDetail({ team, index, assignedReports = [] }) {
-  const status = String(team.status || 'AVAILABLE').toUpperCase()
-  const statusStyle = teamStatusColors[status] || teamStatusColors.OFFLINE
+  const status = String(team.status || 'AVAILABLE').toUpperCase();
+  const statusStyle = teamStatusColors[status] || teamStatusColors.OFFLINE;
 
-  const teamAssignments = assignedReports.filter(
-    (report) =>
-      String(
-        report.team_id ??
-          report.response_team_id ??
-          report.assigned_team_id ??
-          '',
-      ) === String(team.id),
-  )
+  const teamAssignments = assignedReports.filter((report) => {
+    const assignedId =
+      report.team_id ??
+      report.response_team_id ??
+      report.assigned_team_id ??
+      '';
+    return String(assignedId) === String(team.id);
+  });
 
   return (
     <article
@@ -361,6 +362,7 @@ function TeamDetail({ team, index, assignedReports = [] }) {
             >
               {team.team_name || team.name || `Response Team ${index + 1}`}
             </h3>
+
             <div style={{ color: COLORS.muted, fontSize: 11 }}>
               Team ID: {team.id ?? 'Not provided'}
             </div>
@@ -412,14 +414,12 @@ function TeamDetail({ team, index, assignedReports = [] }) {
           <Phone size={15} color={COLORS.blue} />
           <div>
             <div style={teamLabelStyle}>Contact</div>
-            <div style={teamValueStyle}>
-              {team.phone || 'Not provided'}
-            </div>
+            <div style={teamValueStyle}>{team.phone || 'Not provided'}</div>
           </div>
         </div>
 
         <div style={teamInfoStyle}>
-          <LocationIcon size={15} color={COLORS.blue} />
+          <MapPinned size={15} color={COLORS.blue} />
           <div>
             <div style={teamLabelStyle}>Team location</div>
             <div style={teamValueStyle}>
@@ -442,14 +442,16 @@ function TeamDetail({ team, index, assignedReports = [] }) {
         }}
       >
         <span style={{ fontSize: 11, color: COLORS.muted }}>
-          Unit type: <strong>{team.type || team.team_type || 'Not provided'}</strong>
+          Unit type:{' '}
+          <strong>{team.type || team.team_type || 'Not provided'}</strong>
         </span>
+
         <span style={{ fontSize: 11, color: COLORS.muted }}>
           Linked reports: <strong>{teamAssignments.length}</strong>
         </span>
       </div>
     </article>
-  )
+  );
 }
 
 const teamInfoStyle = {
@@ -460,53 +462,53 @@ const teamInfoStyle = {
   borderRadius: 10,
   background: '#f8fafc',
   minWidth: 0,
-}
+};
 
 const teamLabelStyle = {
   color: COLORS.muted,
   fontSize: 10,
   marginBottom: 4,
-}
+};
 
 const teamValueStyle = {
   color: COLORS.navy,
   fontSize: 11,
   fontWeight: 750,
   overflowWrap: 'anywhere',
-}
+};
 
 function Dashboard() {
-  const user = useMemo(() => getStoredUser(), [])
+  const user = useMemo(() => getStoredUser(), []);
   const role = String(
     user?.role || user?.userType || user?.user_type || 'CITIZEN',
-  ).toUpperCase()
+  ).toUpperCase();
 
-  const isAdmin = role === 'ADMIN'
-  const isResponseTeam = role === 'RESPONSE_TEAM'
-  const isCitizen = role === 'CITIZEN'
+  const isAdmin = role === 'ADMIN';
+  const isResponseTeam = role === 'RESPONSE_TEAM';
+  const isCitizen = role === 'CITIZEN';
 
-  const [reports, setReports] = useState([])
-  const [teams, setTeams] = useState([])
-  const [resources, setResources] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState('')
-  const [actionMessage, setActionMessage] = useState('')
-  const [actionError, setActionError] = useState('')
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('ALL')
-  const [severityFilter, setSeverityFilter] = useState('ALL')
-  const [teamStatusFilter, setTeamStatusFilter] = useState('ALL')
-  const [teamSearch, setTeamSearch] = useState('')
-  const [locating, setLocating] = useState(false)
-  const [gps, setGps] = useState(null)
-  const [gpsMessage, setGpsMessage] = useState('')
-  const [selectedTeam, setSelectedTeam] = useState({})
-  const [selectedResource, setSelectedResource] = useState({})
-  const [resourceQuantity, setResourceQuantity] = useState({})
-  const [busyId, setBusyId] = useState(null)
+  const [reports, setReports] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [resources, setResources] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [severityFilter, setSeverityFilter] = useState('ALL');
+  const [teamStatusFilter, setTeamStatusFilter] = useState('ALL');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [locating, setLocating] = useState(false);
+  const [gps, setGps] = useState(null);
+  const [gpsMessage, setGpsMessage] = useState('');
+  const [selectedTeam, setSelectedTeam] = useState({});
+  const [selectedResource, setSelectedResource] = useState({});
+  const [resourceQuantity, setResourceQuantity] = useState({});
+  const [busyId, setBusyId] = useState(null);
 
-  const token = getToken()
+  const token = getToken();
 
   const apiFetch = useCallback(
     async (path, options = {}) => {
@@ -517,127 +519,132 @@ function Dashboard() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(options.headers || {}),
         },
-      })
+      });
 
-      const text = await response.text()
-      let data = {}
+      const responseText = await response.text();
+      let data = {};
 
       try {
-        data = text ? JSON.parse(text) : {}
+        data = responseText ? JSON.parse(responseText) : {};
       } catch {
-        data = { message: text }
+        data = { message: responseText };
       }
 
       if (!response.ok) {
         throw new Error(
-          data.message || data.error || `Request failed (${response.status})`,
-        )
+          data.message ||
+            data.error ||
+            `Request failed (${response.status})`,
+        );
       }
 
-      return data
+      return data;
     },
     [token],
-  )
+  );
 
   const loadDashboard = useCallback(
     async (showSpinner = true) => {
-      if (showSpinner) setLoading(true)
-      setError('')
+      if (showSpinner) setLoading(true);
+      setError('');
 
       const results = await Promise.allSettled([
         apiFetch('/api/disasters'),
         apiFetch('/api/teams'),
         apiFetch('/api/resources'),
-      ])
+      ]);
 
       if (results[0].status === 'fulfilled') {
-        setReports(getArray(results[0].value, 'disasters'))
+        setReports(getArray(results[0].value, 'disasters'));
       }
 
       if (results[1].status === 'fulfilled') {
-        setTeams(getArray(results[1].value, 'teams'))
+        setTeams(getArray(results[1].value, 'teams'));
       }
 
       if (results[2].status === 'fulfilled') {
-        setResources(getArray(results[2].value, 'resources'))
+        setResources(getArray(results[2].value, 'resources'));
       }
 
       if (results[0].status === 'rejected') {
         setError(
-          `Could not load emergency reports: ${results[0].reason?.message || 'Check the backend and your login.'}`,
-        )
+          `Could not load emergency reports: ${
+            results[0].reason?.message ||
+            'Check the backend and your login.'
+          }`,
+        );
       } else {
         const failed = results
           .slice(1)
-          .filter((result) => result.status === 'rejected')
+          .filter((result) => result.status === 'rejected');
 
-        if (failed.length) {
+        if (failed.length > 0) {
           setError(
             `Reports loaded, but some dashboard data could not load: ${failed
               .map((result) => result.reason?.message)
               .filter(Boolean)
               .join('; ')}`,
-          )
+          );
         }
       }
 
-      setLoading(false)
-      setRefreshing(false)
+      setLoading(false);
+      setRefreshing(false);
     },
     [apiFetch],
-  )
+  );
 
   useEffect(() => {
-    loadDashboard(true)
-  }, [loadDashboard])
+    loadDashboard(true);
+  }, [loadDashboard]);
 
   const myReports = useMemo(() => {
-    if (!isCitizen || !user) return reports
+    if (!isCitizen || !user) return reports;
 
-    const userId = user.id ?? user.user_id
-    const email = String(user.email || '').toLowerCase()
+    const userId = user.id ?? user.user_id;
+    const email = String(user.email || '').toLowerCase();
 
     return reports.filter((report) => {
       const reporterId =
         report.reported_by ??
         report.reporter_id ??
         report.user_id ??
-        report.created_by
+        report.created_by;
 
       const reporterEmail = String(
         report.reporter_email || report.email || '',
-      ).toLowerCase()
+      ).toLowerCase();
 
       if (userId != null && reporterId != null) {
-        return String(reporterId) === String(userId)
+        return String(reporterId) === String(userId);
       }
 
-      if (email && reporterEmail) return reporterEmail === email
-      return false
-    })
-  }, [reports, isCitizen, user])
+      if (email && reporterEmail) return reporterEmail === email;
+      return false;
+    });
+  }, [reports, isCitizen, user]);
 
   const filteredReports = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const query = search.trim().toLowerCase();
 
     return myReports.filter((item) => {
-      const status = String(item.status || 'REPORTED').toUpperCase()
-      const severity = String(item.severity || 'MEDIUM').toUpperCase()
+      const status = String(item.status || 'REPORTED').toUpperCase();
+      const severity = String(item.severity || 'MEDIUM').toUpperCase();
 
       const matchesSearch =
         !query ||
         String(item.disaster_type || '').toLowerCase().includes(query) ||
         String(item.location || '').toLowerCase().includes(query) ||
         String(item.description || '').toLowerCase().includes(query) ||
-        String(item.reporter_name || '').toLowerCase().includes(query)
+        String(item.reporter_name || '').toLowerCase().includes(query);
 
       return (
         matchesSearch &&
         (statusFilter === 'ALL' || status === statusFilter) &&
         (severityFilter === 'ALL' || severity === severityFilter)
-      )
-    })
-  }, [myReports, search, statusFilter, severityFilter])
+      );
+    });
+  }, [myReports, search, statusFilter, severityFilter]);
 
   const reportsWithCoordinates = useMemo(
     () =>
@@ -648,15 +655,15 @@ function Dashboard() {
         }))
         .filter((report) => report.coordinates),
     [reports],
-  )
+  );
 
   const mapCenter = useMemo(() => {
-    if (gps) return [gps.latitude, gps.longitude]
-    return reportsWithCoordinates[0]?.coordinates || DEFAULT_CENTER
-  }, [gps, reportsWithCoordinates])
+    if (gps) return [gps.latitude, gps.longitude];
+    return reportsWithCoordinates[0]?.coordinates || DEFAULT_CENTER;
+  }, [gps, reportsWithCoordinates]);
 
   const computedStats = useMemo(() => {
-    const source = isCitizen ? myReports : reports
+    const source = isCitizen ? myReports : reports;
 
     return {
       total: source.length,
@@ -675,8 +682,8 @@ function Dashboard() {
       resolved: source.filter(
         (item) => String(item.status || '').toUpperCase() === 'RESOLVED',
       ).length,
-    }
-  }, [reports, myReports, isCitizen])
+    };
+  }, [reports, myReports, isCitizen]);
 
   const availableTeams = useMemo(
     () =>
@@ -685,13 +692,13 @@ function Dashboard() {
           String(team.status || 'AVAILABLE').toUpperCase() === 'AVAILABLE',
       ),
     [teams],
-  )
+  );
 
   const filteredTeams = useMemo(() => {
-    const query = teamSearch.trim().toLowerCase()
+    const query = teamSearch.trim().toLowerCase();
 
     return teams.filter((team) => {
-      const status = String(team.status || 'AVAILABLE').toUpperCase()
+      const status = String(team.status || 'AVAILABLE').toUpperCase();
       const searchableText = [
         team.team_name,
         team.name,
@@ -703,14 +710,14 @@ function Dashboard() {
       ]
         .filter(Boolean)
         .join(' ')
-        .toLowerCase()
+        .toLowerCase();
 
       return (
         (teamStatusFilter === 'ALL' || status === teamStatusFilter) &&
         (!query || searchableText.includes(query))
-      )
-    })
-  }, [teams, teamSearch, teamStatusFilter])
+      );
+    });
+  }, [teams, teamSearch, teamStatusFilter]);
 
   const teamStats = useMemo(
     () => ({
@@ -727,152 +734,154 @@ function Dashboard() {
       ).length,
     }),
     [teams],
-  )
+  );
 
   const notifyAction = (message, isError = false) => {
-    setActionMessage(isError ? '' : message)
-    setActionError(isError ? message : '')
-  }
+    setActionMessage(isError ? '' : message);
+    setActionError(isError ? message : '');
+  };
 
   const updateReportStatus = async (reportId, newStatus) => {
     if (!reportId) {
-      notifyAction('This report does not have a valid ID.', true)
-      return
+      notifyAction('This report does not have a valid ID.', true);
+      return;
     }
 
     if (!isAdmin && !isResponseTeam) {
-      notifyAction('You are not authorized to update this report.', true)
-      return
+      notifyAction('You are not authorized to update this report.', true);
+      return;
     }
 
-    setBusyId(reportId)
-    setActionMessage('')
-    setActionError('')
+    setBusyId(reportId);
+    setActionMessage('');
+    setActionError('');
 
     try {
       await apiFetch(`/api/disasters/${reportId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus }),
-      })
+      });
 
-      notifyAction(`Report status updated to ${formatStatus(newStatus)}.`)
-      await loadDashboard(false)
+      notifyAction(`Report status updated to ${formatStatus(newStatus)}.`);
+      await loadDashboard(false);
     } catch (requestError) {
       notifyAction(
         requestError.message || 'Could not update report status.',
         true,
-      )
+      );
     } finally {
-      setBusyId(null)
+      setBusyId(null);
     }
-  }
+  };
 
   const assignTeam = async (reportId) => {
     if (!isAdmin) {
-      notifyAction('Only an Admin can assign a response team.', true)
-      return
+      notifyAction('Only an Admin can assign a response team.', true);
+      return;
     }
 
-    const teamId = selectedTeam[reportId]
+    const teamId = selectedTeam[reportId];
 
     if (!teamId) {
-      notifyAction('Select a response team before assigning this report.', true)
-      return
+      notifyAction('Select a response team before assigning this report.', true);
+      return;
     }
 
     const report = reports.find(
       (item) => String(item.id) === String(reportId),
-    )
+    );
 
     if (!report) {
-      notifyAction('Report not found. Refresh the dashboard and try again.', true)
-      return
+      notifyAction('Report not found. Refresh the dashboard and try again.', true);
+      return;
     }
 
     const selectedTeamRecord = availableTeams.find(
       (team) => String(team.id) === String(teamId),
-    )
+    );
 
     if (!selectedTeamRecord) {
       notifyAction(
         'This team is no longer available. Refresh the dashboard and select another team.',
         true,
-      )
-      await loadDashboard(false)
-      return
+      );
+      await loadDashboard(false);
+      return;
     }
 
-    setBusyId(reportId)
-    setActionMessage('')
-    setActionError('')
+    setBusyId(reportId);
+    setActionMessage('');
+    setActionError('');
 
     try {
-      // The backend expects snake_case fields.
       await apiFetch('/api/assignments', {
         method: 'POST',
         body: JSON.stringify({
           disaster_id: reportId,
           team_id: teamId,
         }),
-      })
+      });
+
+      const teamName =
+        selectedTeamRecord.team_name || `Team ${teamId}`;
 
       notifyAction(
-        `${selectedTeamRecord.team_name || `Team ${teamId}`} assigned successfully to report #${reportId}.`,
-      )
+        `${teamName} assigned successfully to report #${reportId}.`,
+      );
 
-      setSelectedTeam((current) => ({ ...current, [reportId]: '' }))
-      await loadDashboard(false)
+      setSelectedTeam((current) => ({ ...current, [reportId]: '' }));
+      await loadDashboard(false);
     } catch (requestError) {
       notifyAction(
         requestError.message ||
           'Could not assign the team. Check team availability and the backend.',
         true,
-      )
+      );
     } finally {
-      setBusyId(null)
+      setBusyId(null);
     }
-  }
+  };
 
   const allocateResource = async (reportId) => {
     if (!isAdmin) {
-      notifyAction('Only an Admin can allocate resources.', true)
-      return
+      notifyAction('Only an Admin can allocate resources.', true);
+      return;
     }
 
-    const resourceId = selectedResource[reportId]
-    const quantity = Number(resourceQuantity[reportId])
+    const resourceId = selectedResource[reportId];
+    const quantity = Number(resourceQuantity[reportId]);
 
     if (!resourceId) {
-      notifyAction('Select a resource to allocate.', true)
-      return
+      notifyAction('Select a resource to allocate.', true);
+      return;
     }
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      notifyAction('Enter a quantity greater than zero.', true)
-      return
+      notifyAction('Enter a quantity greater than zero.', true);
+      return;
     }
 
     const resource = resources.find(
       (item) => String(item.id) === String(resourceId),
-    )
+    );
 
     if (!resource) {
-      notifyAction('Selected resource was not found. Refresh and try again.', true)
-      return
+      notifyAction('Selected resource was not found. Refresh and try again.', true);
+      return;
     }
 
     const available = Number(
       resource.quantity ?? resource.available_quantity ?? resource.stock,
-    )
+    );
 
     if (Number.isFinite(available) && quantity > available) {
-      notifyAction(`Only ${available} unit(s) of this resource are listed.`, true)
-      return
+      notifyAction(`Only ${available} unit(s) of this resource are listed.`, true);
+      return;
     }
 
-    setBusyId(reportId)
-    setActionMessage('')
-    setActionError('')
+    setBusyId(reportId);
+    setActionMessage('');
+    setActionError('');
 
     try {
       await apiFetch('/api/allocations', {
@@ -882,68 +891,68 @@ function Dashboard() {
           disaster_id: reportId,
           quantity,
         }),
-      })
+      });
 
-      notifyAction('Resource allocation submitted successfully.')
-      setSelectedResource((current) => ({ ...current, [reportId]: '' }))
-      setResourceQuantity((current) => ({ ...current, [reportId]: '' }))
-      await loadDashboard(false)
+      notifyAction('Resource allocation submitted successfully.');
+      setSelectedResource((current) => ({ ...current, [reportId]: '' }));
+      setResourceQuantity((current) => ({ ...current, [reportId]: '' }));
+      await loadDashboard(false);
     } catch (requestError) {
       notifyAction(
         requestError.message ||
           'Could not allocate resource. Check the allocation API and stock.',
         true,
-      )
+      );
     } finally {
-      setBusyId(null)
+      setBusyId(null);
     }
-  }
+  };
 
   const refresh = async () => {
-    setRefreshing(true)
-    await loadDashboard(false)
-  }
+    setRefreshing(true);
+    await loadDashboard(false);
+  };
 
   const getCurrentLocation = () => {
-    setGpsMessage('')
-    setActionMessage('')
-    setActionError('')
+    setGpsMessage('');
+    setActionMessage('');
+    setActionError('');
 
     if (!navigator.geolocation) {
-      setGpsMessage('Geolocation is not supported by this browser.')
-      return
+      setGpsMessage('Geolocation is not supported by this browser.');
+      return;
     }
 
-    setLocating(true)
+    setLocating(true);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setGps({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
-        })
-        setGpsMessage('Current location detected successfully.')
-        setLocating(false)
+        });
+        setGpsMessage('Current location detected successfully.');
+        setLocating(false);
       },
       (locationError) => {
         const messages = {
           1: 'Location permission was denied. Allow location access in browser settings.',
           2: 'Your location could not be determined. Try again outdoors.',
           3: 'Location request timed out. Please try again.',
-        }
+        };
 
         setGpsMessage(
           messages[locationError.code] ||
             'Could not access your location. Please try again.',
-        )
-        setLocating(false)
+        );
+        setLocating(false);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-    )
-  }
+    );
+  };
 
-  const cardStyle = styles.card
-  const inputStyle = styles.input
+  const cardStyle = styles.card;
+  const inputStyle = styles.input;
 
   return (
     <div
@@ -1145,7 +1154,6 @@ function Dashboard() {
           />
         </section>
 
-        {/* NEW: Admin team availability summary */}
         {isAdmin && (
           <section
             style={{
@@ -1279,7 +1287,7 @@ function Dashboard() {
             <button
               type="button"
               onClick={() => {
-                window.location.hash = '#/report-disaster'
+                window.location.hash = '#/report-disaster';
               }}
               style={{
                 ...styles.actionButton,
@@ -1293,7 +1301,6 @@ function Dashboard() {
           </section>
         )}
 
-        {/* NEW: Full Response Team Management section for Admin */}
         {isAdmin && (
           <section style={{ ...cardStyle, marginBottom: 22 }}>
             <div
@@ -1398,7 +1405,8 @@ function Dashboard() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))',
+                gridTemplateColumns:
+                  'repeat(auto-fit, minmax(min(100%, 330px), 1fr))',
                 gap: 13,
               }}
             >
@@ -1459,7 +1467,9 @@ function Dashboard() {
                 <div>
                   <h2 style={styles.sectionTitle}>
                     <AlertTriangle size={21} color={COLORS.blue} />
-                    {isCitizen ? 'My Emergency Reports' : 'Emergency Report Inbox'}
+                    {isCitizen
+                      ? 'My Emergency Reports'
+                      : 'Emergency Report Inbox'}
                   </h2>
                   <p style={{ ...styles.muted, margin: '7px 0 0' }}>
                     {isAdmin
@@ -1471,7 +1481,7 @@ function Dashboard() {
                 {isCitizen && (
                   <ActionButton
                     onClick={() => {
-                      window.location.hash = '#/report-disaster'
+                      window.location.hash = '#/report-disaster';
                     }}
                     color="#fff"
                     background={COLORS.blue}
@@ -1544,34 +1554,44 @@ function Dashboard() {
 
                   <tbody>
                     {filteredReports.map((item) => {
-                      const status = String(item.status || 'REPORTED').toUpperCase()
-                      const badge = statusColors[status] || statusColors.REPORTED
-                      const coordinates = getCoordinates(item)
-                      const busy = busyId === item.id
+                      const status = String(
+                        item.status || 'REPORTED',
+                      ).toUpperCase();
+                      const badge =
+                        statusColors[status] || statusColors.REPORTED;
+                      const coordinates = getCoordinates(item);
+                      const busy = busyId === item.id;
 
                       const availableForReport = teams.filter(
                         (team) =>
                           String(team.status || 'AVAILABLE').toUpperCase() ===
                           'AVAILABLE',
-                      )
+                      );
 
                       const resourceForReport = resources.find(
                         (resource) =>
                           String(resource.id) ===
                           String(selectedResource[item.id] || ''),
-                      )
+                      );
 
                       const stock = Number(
                         resourceForReport?.quantity ??
                           resourceForReport?.available_quantity ??
                           resourceForReport?.stock,
-                      )
+                      );
 
                       return (
                         <tr key={item.id}>
                           <td>
-                            <div style={{ color: COLORS.navy, fontWeight: 750 }}>
-                              {formatStatus(item.disaster_type || 'Emergency')}
+                            <div
+                              style={{
+                                color: COLORS.navy,
+                                fontWeight: 750,
+                              }}
+                            >
+                              {formatStatus(
+                                item.disaster_type || 'Emergency',
+                              )}
                             </div>
                             <div
                               style={{
@@ -1652,7 +1672,9 @@ function Dashboard() {
                                 fontSize: 11,
                               }}
                             >
-                              {String(item.severity || 'MEDIUM').toUpperCase()}
+                              {String(
+                                item.severity || 'MEDIUM',
+                              ).toUpperCase()}
                             </span>
                           </td>
 
@@ -1745,7 +1767,10 @@ function Dashboard() {
                                         </option>
 
                                         {availableForReport.map((team) => (
-                                          <option key={team.id} value={team.id}>
+                                          <option
+                                            key={team.id}
+                                            value={team.id}
+                                          >
                                             {team.team_name ||
                                               team.name ||
                                               `Team ${team.id}`}
@@ -1769,13 +1794,14 @@ function Dashboard() {
                                           }}
                                         >
                                           {(() => {
-                                            const selected = availableForReport.find(
-                                              (team) =>
-                                                String(team.id) ===
-                                                String(selectedTeam[item.id]),
-                                            )
+                                            const selected =
+                                              availableForReport.find(
+                                                (team) =>
+                                                  String(team.id) ===
+                                                  String(selectedTeam[item.id]),
+                                              );
 
-                                            if (!selected) return null
+                                            if (!selected) return null;
 
                                             return (
                                               <>
@@ -1786,11 +1812,13 @@ function Dashboard() {
                                                 </strong>
                                                 <div>
                                                   Leader:{' '}
-                                                  {selected.leader || 'Not provided'}
+                                                  {selected.leader ||
+                                                    'Not provided'}
                                                 </div>
                                                 <div>
                                                   Phone:{' '}
-                                                  {selected.phone || 'Not provided'}
+                                                  {selected.phone ||
+                                                    'Not provided'}
                                                 </div>
                                                 <div>
                                                   Members:{' '}
@@ -1803,7 +1831,7 @@ function Dashboard() {
                                                     'Not provided'}
                                                 </div>
                                               </>
-                                            )
+                                            );
                                           })()}
                                         </div>
                                       )}
@@ -1821,7 +1849,8 @@ function Dashboard() {
 
                                       <ActionButton
                                         disabled={
-                                          busy || availableForReport.length === 0
+                                          busy ||
+                                          availableForReport.length === 0
                                         }
                                         onClick={() => assignTeam(item.id)}
                                       >
@@ -1871,7 +1900,7 @@ function Dashboard() {
                                             resource.quantity ??
                                             resource.available_quantity ??
                                             resource.stock ??
-                                            'Unknown stock'
+                                            'Unknown stock';
 
                                           return (
                                             <option
@@ -1885,18 +1914,23 @@ function Dashboard() {
                                               {' — stock: '}
                                               {quantity}
                                             </option>
-                                          )
+                                          );
                                         })}
                                       </select>
 
                                       <input
                                         className="resq-dashboard-input"
-                                        style={{ ...inputStyle, marginTop: 7 }}
+                                        style={{
+                                          ...inputStyle,
+                                          marginTop: 7,
+                                        }}
                                         type="number"
                                         min="1"
                                         step="1"
                                         max={
-                                          Number.isFinite(stock) ? stock : undefined
+                                          Number.isFinite(stock)
+                                            ? stock
+                                            : undefined
                                         }
                                         placeholder="Quantity"
                                         aria-label="Resource quantity"
@@ -1910,12 +1944,18 @@ function Dashboard() {
                                       />
 
                                       <ActionButton
-                                        disabled={busy || resources.length === 0}
-                                        onClick={() => allocateResource(item.id)}
+                                        disabled={
+                                          busy || resources.length === 0
+                                        }
+                                        onClick={() =>
+                                          allocateResource(item.id)
+                                        }
                                         color={COLORS.blue}
                                       >
                                         <Package size={13} />
-                                        {busy ? 'Processing...' : 'Allocate resource'}
+                                        {busy
+                                          ? 'Processing...'
+                                          : 'Allocate resource'}
                                       </ActionButton>
                                     </div>
                                   )}
@@ -1924,7 +1964,10 @@ function Dashboard() {
                                   <ActionButton
                                     disabled={busy}
                                     onClick={() =>
-                                      updateReportStatus(item.id, 'IN_PROGRESS')
+                                      updateReportStatus(
+                                        item.id,
+                                        'IN_PROGRESS',
+                                      )
                                     }
                                     color="#0e7490"
                                   >
@@ -1932,17 +1975,21 @@ function Dashboard() {
                                   </ActionButton>
                                 )}
 
-                                {isResponseTeam && status === 'IN_PROGRESS' && (
-                                  <ActionButton
-                                    disabled={busy}
-                                    onClick={() =>
-                                      updateReportStatus(item.id, 'RESOLVED')
-                                    }
-                                    color={COLORS.green}
-                                  >
-                                    <CheckCircle2 size={13} /> Resolve mission
-                                  </ActionButton>
-                                )}
+                                {isResponseTeam &&
+                                  status === 'IN_PROGRESS' && (
+                                    <ActionButton
+                                      disabled={busy}
+                                      onClick={() =>
+                                        updateReportStatus(
+                                          item.id,
+                                          'RESOLVED',
+                                        )
+                                      }
+                                      color={COLORS.green}
+                                    >
+                                      <CheckCircle2 size={13} /> Resolve mission
+                                    </ActionButton>
+                                  )}
 
                                 {busy && (
                                   <span
@@ -1958,7 +2005,7 @@ function Dashboard() {
                             </td>
                           )}
                         </tr>
-                      )
+                      );
                     })}
 
                     {!loading && filteredReports.length === 0 && (
@@ -1973,7 +2020,10 @@ function Dashboard() {
                         >
                           <FileText
                             size={27}
-                            style={{ display: 'block', margin: '0 auto 10px' }}
+                            style={{
+                              display: 'block',
+                              margin: '0 auto 10px',
+                            }}
                           />
                           <strong>
                             {myReports.length === 0
@@ -1985,7 +2035,7 @@ function Dashboard() {
                             <div style={{ marginTop: 13 }}>
                               <ActionButton
                                 onClick={() => {
-                                  window.location.hash = '#/report-disaster'
+                                  window.location.hash = '#/report-disaster';
                                 }}
                                 color="#fff"
                                 background={COLORS.blue}
@@ -2090,7 +2140,9 @@ function Dashboard() {
                       <Popup>
                         <div style={{ minWidth: 175 }}>
                           <strong>
-                            {formatStatus(report.disaster_type || 'Emergency')}
+                            {formatStatus(
+                              report.disaster_type || 'Emergency',
+                            )}
                           </strong>
                           <p style={{ margin: '6px 0' }}>
                             {report.location || 'Location unavailable'}
@@ -2102,7 +2154,9 @@ function Dashboard() {
                                 color: getSeverityColor(report.severity),
                               }}
                             >
-                              {String(report.severity || 'MEDIUM').toUpperCase()}
+                              {String(
+                                report.severity || 'MEDIUM',
+                              ).toUpperCase()}
                             </strong>
                           </p>
                           <p style={{ margin: '6px 0' }}>
@@ -2142,13 +2196,15 @@ function Dashboard() {
               >
                 <ActionButton onClick={getCurrentLocation} disabled={locating}>
                   <LocateFixed size={16} />
-                  {locating ? 'Detecting location...' : 'Use My Current Location'}
+                  {locating
+                    ? 'Detecting location...'
+                    : 'Use My Current Location'}
                 </ActionButton>
 
                 <ActionButton
                   onClick={() => {
-                    setGps(null)
-                    setGpsMessage('')
+                    setGps(null);
+                    setGpsMessage('');
                   }}
                 >
                   <RefreshCw size={15} /> Show report map
@@ -2168,7 +2224,10 @@ function Dashboard() {
                 >
                   <Navigation
                     size={14}
-                    style={{ verticalAlign: 'middle', marginRight: 5 }}
+                    style={{
+                      verticalAlign: 'middle',
+                      marginRight: 5,
+                    }}
                   />
                   Coordinates: {gps.latitude.toFixed(6)},{' '}
                   {gps.longitude.toFixed(6)}
@@ -2223,10 +2282,10 @@ function Dashboard() {
               {teams.slice(0, 8).map((team, index) => {
                 const teamStatus = String(
                   team.status || 'AVAILABLE',
-                ).toUpperCase()
+                ).toUpperCase();
 
-                const statusStyle =
-                  teamStatusColors[teamStatus] || teamStatusColors.OFFLINE
+                const teamBadgeStyle =
+                  teamStatusColors[teamStatus] || teamStatusColors.OFFLINE;
 
                 return (
                   <div
@@ -2283,8 +2342,8 @@ function Dashboard() {
 
                       <span
                         style={{
-                          background: statusStyle.bg,
-                          color: statusStyle.color,
+                          background: teamBadgeStyle.bg,
+                          color: teamBadgeStyle.color,
                           borderRadius: 20,
                           padding: '6px 8px',
                           fontSize: 9,
@@ -2312,7 +2371,7 @@ function Dashboard() {
                       <div>Location: {team.location || 'Not provided'}</div>
                     </div>
                   </div>
-                )
+                );
               })}
             </section>
 
@@ -2393,7 +2452,13 @@ function Dashboard() {
                 borderColor: '#dbeafe',
               }}
             >
-              <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 11,
+                  alignItems: 'flex-start',
+                }}
+              >
                 <div style={{ color: COLORS.blue }}>
                   <Bell size={22} />
                 </div>
@@ -2422,7 +2487,7 @@ function Dashboard() {
                   <button
                     type="button"
                     onClick={() => {
-                      window.location.hash = '#/notifications'
+                      window.location.hash = '#/notifications';
                     }}
                     style={{
                       ...styles.actionButton,
@@ -2492,7 +2557,7 @@ function Dashboard() {
         </footer>
       </main>
     </div>
-  )
+  );
 }
 
-export default Dashboard
+export default Dashboard;

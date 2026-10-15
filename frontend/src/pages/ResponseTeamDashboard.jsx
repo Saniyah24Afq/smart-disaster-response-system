@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -24,7 +23,6 @@ import {
   FileText,
   Send,
   Package,
-  UserRound,
   ClipboardCheck,
 } from "lucide-react";
 import "./ResponseTeamDashboard.css";
@@ -96,6 +94,7 @@ function getStatus(item) {
 
   if (value === "PENDING") return "ASSIGNED";
   if (value === "COMPLETED") return "RESOLVED";
+
   return value;
 }
 
@@ -152,25 +151,32 @@ function getCoordinates(item) {
       item?.lng
   );
 
+  const hasLatitude =
+    location?.latitude != null ||
+    location?.lat != null ||
+    report?.latitude != null ||
+    report?.lat != null ||
+    item?.latitude != null ||
+    item?.lat != null;
+
+  const hasLongitude =
+    location?.longitude != null ||
+    location?.lng != null ||
+    location?.long != null ||
+    report?.longitude != null ||
+    report?.lng != null ||
+    item?.longitude != null ||
+    item?.lng != null;
+
   if (
+    hasLatitude &&
+    hasLongitude &&
     Number.isFinite(latitude) &&
     Number.isFinite(longitude) &&
     latitude >= -90 &&
     latitude <= 90 &&
     longitude >= -180 &&
-    longitude <= 180 &&
-    (location?.latitude != null ||
-      location?.lat != null ||
-      location?.longitude != null ||
-      location?.lng != null ||
-      report?.latitude != null ||
-      report?.lat != null ||
-      report?.longitude != null ||
-      report?.lng != null ||
-      item?.latitude != null ||
-      item?.lat != null ||
-      item?.longitude != null ||
-      item?.lng != null)
+    longitude <= 180
   ) {
     return { latitude, longitude };
   }
@@ -180,6 +186,7 @@ function getCoordinates(item) {
 
 function getPriority(item) {
   const report = getReport(item);
+
   const raw = getText(
     item?.priority,
     report?.priority,
@@ -241,7 +248,9 @@ function getReporter(item) {
   const reporter =
     report?.reportedBy ?? report?.user ?? item?.reportedBy;
 
-  if (typeof reporter === "string") return reporter;
+  if (typeof reporter === "string") {
+    return reporter;
+  }
 
   return getText(
     reporter?.name,
@@ -276,11 +285,15 @@ function getDate(item) {
     item?.updatedAt
   );
 
-  if (!raw) return "Date unavailable";
+  if (!raw) {
+    return "Date unavailable";
+  }
 
   const date = new Date(raw);
 
-  if (Number.isNaN(date.getTime())) return raw;
+  if (Number.isNaN(date.getTime())) {
+    return raw;
+  }
 
   return date.toLocaleString([], {
     day: "numeric",
@@ -338,15 +351,13 @@ function PriorityBadge({ priority }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, description, tone }) {
+function StatCard({ label, value, description, tone }) {
   return (
     <article className={`stat-card stat-${tone}`}>
       <div className="stat-card-top">
-        <span className="stat-icon">
-          <Icon size={21} />
-        </span>
         <span className="stat-caption">{description}</span>
       </div>
+
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </article>
@@ -392,12 +403,16 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
     event.preventDefault();
 
     if (!assignmentId) {
-      setReportError("Assignment ID is missing. Cannot submit this report.");
+      setReportError(
+        "Assignment ID is missing. Cannot submit this report."
+      );
       return;
     }
 
     if (!groundCondition) {
-      setReportError("Please select the current ground condition.");
+      setReportError(
+        "Please select the current ground condition."
+      );
       return;
     }
 
@@ -431,8 +446,11 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
       }
 
       const resources = [
-        ...selectedResources.filter((resource) => resource !== "Other"),
-        ...(selectedResources.includes("Other") && otherResource.trim()
+        ...selectedResources.filter(
+          (resource) => resource !== "Other"
+        ),
+        ...(selectedResources.includes("Other") &&
+        otherResource.trim()
           ? [otherResource.trim()]
           : []),
       ];
@@ -519,7 +537,10 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
       {expanded && (
         <form className="field-report-form" onSubmit={submitReport}>
           {reportError && (
-            <div className="field-report-message field-report-error" role="alert">
+            <div
+              className="field-report-message field-report-error"
+              role="alert"
+            >
               <AlertTriangle size={17} />
               <span>{reportError}</span>
             </div>
@@ -537,7 +558,9 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
 
           <div className="field-report-heading">
             <div>
-              <span className="section-eyebrow">ON-SITE ASSESSMENT</span>
+              <span className="section-eyebrow">
+                ON-SITE ASSESSMENT
+              </span>
               <h4>Submit field observations</h4>
             </div>
             <ClipboardCheck size={23} />
@@ -549,6 +572,7 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
                 <MapPin size={15} />
                 Ground condition *
               </span>
+
               <select
                 value={groundCondition}
                 onChange={(event) =>
@@ -570,6 +594,7 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
                 <Users size={15} />
                 People affected *
               </span>
+
               <input
                 type="number"
                 min="0"
@@ -587,9 +612,12 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
                 <AlertTriangle size={15} />
                 Damage severity
               </span>
+
               <select
                 value={damageLevel}
-                onChange={(event) => setDamageLevel(event.target.value)}
+                onChange={(event) =>
+                  setDamageLevel(event.target.value)
+                }
               >
                 <option value="LOW">Low</option>
                 <option value="MODERATE">Moderate</option>
@@ -604,6 +632,7 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
                 <Activity size={15} />
                 Rescue progress
               </span>
+
               <select
                 value={rescueProgress}
                 onChange={(event) =>
@@ -612,12 +641,18 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
               >
                 <option value="ASSESSMENT">Initial assessment</option>
                 <option value="RESCUE_STARTED">Rescue started</option>
-                <option value="EVACUATION">Evacuation underway</option>
+                <option value="EVACUATION">
+                  Evacuation underway
+                </option>
                 <option value="MEDICAL_ASSISTANCE">
                   Medical assistance
                 </option>
-                <option value="AWAITING_SUPPORT">Awaiting support</option>
-                <option value="COMPLETED">Field operation completed</option>
+                <option value="AWAITING_SUPPORT">
+                  Awaiting support
+                </option>
+                <option value="COMPLETED">
+                  Field operation completed
+                </option>
               </select>
             </label>
           </div>
@@ -668,6 +703,7 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
               <ClipboardList size={16} />
               Field notes and rescue observations *
             </span>
+
             <textarea
               value={fieldNotes}
               onChange={(event) => setFieldNotes(event.target.value)}
@@ -676,6 +712,7 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
               maxLength={3000}
               required
             />
+
             <small>{fieldNotes.length}/3000 characters</small>
           </label>
 
@@ -709,7 +746,9 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
                 ) : (
                   <Send size={16} />
                 )}
-                {submitting ? "Submitting..." : "Submit field report"}
+                {submitting
+                  ? "Submitting..."
+                  : "Submit field report"}
               </button>
             </div>
           </div>
@@ -723,7 +762,12 @@ function FieldIncidentReport({ item, assignmentId, onSubmitted }) {
    MISSION CARD
    ========================================= */
 
-function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
+function MissionCard({
+  item,
+  onUpdate,
+  updatingId,
+  onIncidentSubmitted,
+}) {
   const report = getReport(item);
   const id = getAssignmentId(item);
   const status = getStatus(item);
@@ -738,7 +782,9 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
 
   const mapUrl = coordinates
     ? `https://www.google.com/maps/dir/?api=1&destination=${coordinates.latitude},${coordinates.longitude}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        location
+      )}`;
 
   const nextStatus =
     status === "ASSIGNED"
@@ -776,7 +822,9 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
               ? `CASE #${reportedId.slice(-8)}`
               : "EMERGENCY MISSION"}
           </div>
+
           <h3 className="mission-title">{type}</h3>
+
           <p className="mission-date">
             <Clock3 size={14} />
             {getDate(item)}
@@ -796,10 +844,12 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
           <span className="detail-icon">
             <MapPin size={17} />
           </span>
+
           <div className="detail-content">
             <span className="detail-label">Emergency location</span>
             <span className="detail-value">{location}</span>
           </div>
+
           <a
             className="map-link"
             href={mapUrl}
@@ -817,6 +867,7 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
           <span className="detail-icon">
             <Users size={17} />
           </span>
+
           <div className="detail-content">
             <span className="detail-label">Reported by</span>
             <span className="detail-value">{reporter}</span>
@@ -828,10 +879,12 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
             <span className="detail-icon">
               <Phone size={17} />
             </span>
+
             <div className="detail-content">
               <span className="detail-label">Contact number</span>
               <span className="detail-value">{phone}</span>
             </div>
+
             <a className="map-link" href={`tel:${phone}`}>
               <Phone size={15} />
               <span>Call</span>
@@ -840,7 +893,6 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
         )}
       </div>
 
-      {/* ADDED: Field Incident Report for this mission */}
       <FieldIncidentReport
         item={item}
         assignmentId={id}
@@ -882,6 +934,7 @@ function MissionCard({ item, onUpdate, updatingId, onIncidentSubmitted }) {
               ) : (
                 <Check size={17} />
               )}
+
               {isUpdating ? "Updating..." : nextLabel}
             </button>
           )}
@@ -984,6 +1037,7 @@ export default function ResponseTeamDashboard() {
     }
 
     const previousAssignments = assignments;
+
     setUpdatingId(String(assignmentId));
     setError("");
     setSuccess("");
@@ -1006,7 +1060,9 @@ export default function ResponseTeamDashboard() {
       }
 
       const response = await fetch(
-        `${API_URL}/api/assignments/${encodeURIComponent(assignmentId)}/status`,
+        `${API_URL}/api/assignments/${encodeURIComponent(
+          assignmentId
+        )}/status`,
         {
           method: "PATCH",
           headers: {
@@ -1046,6 +1102,7 @@ export default function ResponseTeamDashboard() {
       );
     } catch (err) {
       setAssignments(previousAssignments);
+
       setError(
         err?.message ||
           "Status update failed. Please check your connection and try again."
@@ -1064,6 +1121,7 @@ export default function ResponseTeamDashboard() {
     return assignments.reduce(
       (result, item) => {
         const status = getStatus(item);
+
         result.total += 1;
 
         if (status === "ASSIGNED") result.assigned += 1;
@@ -1108,13 +1166,20 @@ export default function ResponseTeamDashboard() {
         .join(" ")
         .toLowerCase();
 
-      const matchesSearch = !query || searchableText.includes(query);
+      const matchesSearch =
+        !query || searchableText.includes(query);
+
       const matchesStatus =
         statusFilter === "ALL" || status === statusFilter;
+
       const matchesPriority =
         priorityFilter === "ALL" || priority === priorityFilter;
 
-      return matchesSearch && matchesStatus && matchesPriority;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesPriority
+      );
     });
   }, [assignments, search, statusFilter, priorityFilter]);
 
@@ -1131,6 +1196,7 @@ export default function ResponseTeamDashboard() {
           <div className="response-brand-icon">
             <ShieldCheck size={25} />
           </div>
+
           <div className="response-brand-copy">
             <span className="response-brand-name">RESQ</span>
             <span className="response-brand-subtitle">
@@ -1144,13 +1210,17 @@ export default function ResponseTeamDashboard() {
             <span className="live-dot" />
             Response network
           </span>
+
           <div className="response-user">
             <div className="response-user-avatar">
               {userName.charAt(0).toUpperCase()}
             </div>
+
             <div className="response-user-copy">
               <span className="response-user-name">{userName}</span>
-              <span className="response-user-role">Response team</span>
+              <span className="response-user-role">
+                Response team
+              </span>
             </div>
           </div>
         </div>
@@ -1181,6 +1251,7 @@ export default function ResponseTeamDashboard() {
               <ShieldCheck size={16} />
               Secure response workspace
             </span>
+
             <span>
               <Clock3 size={16} />
               Mission status overview
@@ -1188,19 +1259,26 @@ export default function ResponseTeamDashboard() {
           </div>
         </div>
 
-        <div className="response-hero-visual" aria-hidden="true">
+        <div
+          className="response-hero-visual"
+          aria-hidden="true"
+        >
           <div className="hero-orbit hero-orbit-one" />
           <div className="hero-orbit hero-orbit-two" />
           <div className="hero-orbit hero-orbit-three" />
+
           <div className="hero-center-icon">
             <Siren size={49} strokeWidth={1.7} />
           </div>
+
           <span className="hero-floating-icon hero-floating-one">
             <MapPin size={22} />
           </span>
+
           <span className="hero-floating-icon hero-floating-two">
             <ShieldCheck size={22} />
           </span>
+
           <span className="hero-floating-icon hero-floating-three">
             <Activity size={22} />
           </span>
@@ -1208,9 +1286,13 @@ export default function ResponseTeamDashboard() {
       </section>
 
       {error && (
-        <div className="response-alert response-alert-error" role="alert">
+        <div
+          className="response-alert response-alert-error"
+          role="alert"
+        >
           <AlertTriangle size={19} />
           <span>{error}</span>
+
           <button
             type="button"
             className="alert-dismiss"
@@ -1223,9 +1305,13 @@ export default function ResponseTeamDashboard() {
       )}
 
       {success && (
-        <div className="response-alert response-alert-success" role="status">
+        <div
+          className="response-alert response-alert-success"
+          role="status"
+        >
           <CheckCircle2 size={19} />
           <span>{success}</span>
+
           <button
             type="button"
             className="alert-dismiss"
@@ -1263,28 +1349,27 @@ export default function ResponseTeamDashboard() {
 
         <div className="response-stats">
           <StatCard
-            icon={ClipboardList}
             label="Total missions"
             value={stats.total}
             description="All assignments"
             tone="blue"
           />
+
           <StatCard
-            icon={Clock3}
             label="Awaiting response"
             value={stats.assigned}
             description="Ready to start"
             tone="amber"
           />
+
           <StatCard
-            icon={Activity}
             label="In progress"
             value={stats.inProgress}
             description="Active missions"
             tone="purple"
           />
+
           <StatCard
-            icon={CheckCircle2}
             label="Resolved"
             value={stats.resolved}
             description="Completed missions"
@@ -1297,6 +1382,7 @@ export default function ResponseTeamDashboard() {
             <div className="summary-icon">
               <Siren size={21} />
             </div>
+
             <div className="summary-copy">
               <strong>Stay alert. Stay prepared.</strong>
               <span>
@@ -1331,21 +1417,26 @@ export default function ResponseTeamDashboard() {
               View assignment details and update progress as you respond.
             </p>
           </div>
+
           <span className="mission-count">
             {filteredAssignments.length}{" "}
-            {filteredAssignments.length === 1 ? "mission" : "missions"}
+            {filteredAssignments.length === 1
+              ? "mission"
+              : "missions"}
           </span>
         </div>
 
         <div className="mission-toolbar">
           <label className="mission-search">
             <Search size={18} />
+
             <input
               type="search"
               placeholder="Search by emergency, location or reporter..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
+
             {search && (
               <button
                 type="button"
@@ -1360,6 +1451,7 @@ export default function ResponseTeamDashboard() {
 
           <label className="mission-filter">
             <Filter size={17} />
+
             <select
               aria-label="Filter by status"
               value={statusFilter}
@@ -1377,6 +1469,7 @@ export default function ResponseTeamDashboard() {
 
           <label className="mission-filter">
             <AlertTriangle size={17} />
+
             <select
               aria-label="Filter by priority"
               value={priorityFilter}
@@ -1405,7 +1498,11 @@ export default function ResponseTeamDashboard() {
           )}
         </div>
 
-        <div className="mission-tabs" role="group" aria-label="Mission status">
+        <div
+          className="mission-tabs"
+          role="group"
+          aria-label="Mission status"
+        >
           {STATUS_OPTIONS.map((option) => {
             const count =
               option.value === "ALL"
@@ -1436,7 +1533,9 @@ export default function ResponseTeamDashboard() {
           <div className="mission-state">
             <div className="loading-spinner" />
             <h3>Loading your missions</h3>
-            <p>Connecting to the RESQ response network...</p>
+            <p>
+              Connecting to the RESQ response network...
+            </p>
           </div>
         ) : filteredAssignments.length > 0 ? (
           <div className="mission-grid">
@@ -1459,16 +1558,19 @@ export default function ResponseTeamDashboard() {
                 <Search size={30} />
               )}
             </div>
+
             <h3>
               {assignments.length === 0
                 ? "No missions assigned yet"
                 : "No matching missions"}
             </h3>
+
             <p>
               {assignments.length === 0
                 ? "New assignments will appear here when they are assigned to your response team."
                 : "Try another search term or clear your filters to view more missions."}
             </p>
+
             {assignments.length > 0 && (
               <button
                 type="button"
@@ -1479,6 +1581,7 @@ export default function ResponseTeamDashboard() {
                 Clear filters
               </button>
             )}
+
             {assignments.length === 0 && (
               <button
                 type="button"
@@ -1503,6 +1606,7 @@ export default function ResponseTeamDashboard() {
           <strong>RESQ</strong>
           <span>Smart Disaster Response System</span>
         </div>
+
         <div className="footer-status">
           <span className="live-dot" />
           Response workspace
