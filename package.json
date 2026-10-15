@@ -1,6 +1,8 @@
 {
   "dependencies": {
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.44.0",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.18.3"
   },
   "name": "smart-disaster-response-system",
@@ -10,7 +12,6 @@
   "directories": {
     "doc": "docs"
   },
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

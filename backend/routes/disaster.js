@@ -57,34 +57,33 @@ router.post("/", authenticateToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO disasters
-       (
-         reported_by,
-         disaster_type,
-         description,
-         severity,
-         location,
-         latitude,
-         longitude,
-         image_url
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
+      `INSERT INTO disasters (
+        reported_by,
+        disaster_type,
+        description,
+        severity,
+        location,
+        latitude,
+        longitude,
+        image_url
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *`,
       [
         req.user.id,
         disaster_type,
         description,
         severity,
         location,
-        latitude || null,
-        longitude || null,
+        latitude ?? null,
+        longitude ?? null,
         image_url || null,
       ]
     );
 
     const disaster = result.rows[0];
 
-    // Notification for the person who reported the disaster
+    // Notify the person who reported the disaster
     await createNotification({
       user_id: req.user.id,
       title: "Disaster Report Submitted",
@@ -92,34 +91,34 @@ router.post("/", authenticateToken, async (req, res) => {
       type: severity === "CRITICAL" ? "ALERT" : "INFO",
     });
 
-    // Fetch all Admin users
+    // Fetch all admin users
     const adminResult = await pool.query(
       `SELECT id
        FROM users
        WHERE role = 'ADMIN'`
     );
 
-    // Notification for all Admin users
+    // Notify all admins
     for (const admin of adminResult.rows) {
       await createNotification({
         user_id: admin.id,
         title:
           severity === "CRITICAL"
-            ? "🚨 Critical Disaster Alert"
+            ? "Critical Disaster Alert"
             : "New Disaster Reported",
         message: `${disaster_type} reported at ${location}. Severity: ${severity}.`,
         type: severity === "CRITICAL" ? "ALERT" : "INFO",
       });
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Disaster reported successfully",
       disaster,
     });
   } catch (error) {
     console.error("Report disaster error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while reporting disaster",
     });
   }
@@ -134,19 +133,18 @@ router.get("/", authenticateToken, async (req, res) => {
         u.name AS reporter_name,
         u.email AS reporter_email
        FROM disasters d
-       LEFT JOIN users u
-       ON d.reported_by = u.id
+       LEFT JOIN users u ON d.reported_by = u.id
        ORDER BY d.created_at DESC`
     );
 
-    res.json({
+    return res.json({
       message: "Disasters fetched successfully",
       disasters: result.rows,
     });
   } catch (error) {
     console.error("Fetch disasters error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while fetching disasters",
     });
   }
@@ -166,6 +164,12 @@ router.patch("/:id/status", authenticateToken, async (req, res) => {
       "RESOLVED",
       "REJECTED",
     ];
+
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({
+        message: "Invalid disaster ID",
+      });
+    }
 
     if (!status) {
       return res.status(400).json({
@@ -199,14 +203,14 @@ router.patch("/:id/status", authenticateToken, async (req, res) => {
       [status, id]
     );
 
-    res.json({
+    return res.json({
       message: "Disaster status updated successfully",
       disaster: result.rows[0],
     });
   } catch (error) {
     console.error("Update disaster status error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Server error while updating disaster status",
     });
   }

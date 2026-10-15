@@ -1,1872 +1,2496 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowRight,
   Bell,
   CheckCircle2,
-  ChevronRight,
   Clock3,
-  Droplets,
-  HeartPulse,
-  Package,
-  ShieldCheck,
-  Truck,
-  Users,
-  Waves,
-  XCircle,
-  RefreshCw,
-  UserCheck,
+  FileText,
+  LocateFixed,
   MapPin,
+  MapPinned,
+  Navigation,
+  RefreshCw,
+  ShieldCheck,
+  Siren,
+  Users,
+  XCircle,
+  Package,
+  Activity,
+  Phone,
+  UserRound,
+  MapPinned as LocationIcon,
+  ClipboardCheck,
+  Truck,
 } from 'lucide-react'
-
-import { useNavigate } from 'react-router-dom'
-
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  useMap,
+} from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import './Dashboard.css'
-import MapView from './MapView'
 
 const API_URL = 'http://localhost:5000'
+const DEFAULT_CENTER = [19.076, 72.8777]
 
-function Dashboard() {
-  const navigate = useNavigate()
+const COLORS = {
+  navy: '#10243e',
+  blue: '#2563eb',
+  red: '#dc2626',
+  green: '#15803d',
+  muted: '#64748b',
+  text: '#334155',
+  border: '#e2e8f0',
+  background: '#f5f8fc',
+}
 
-  const [stats, setStats] = useState({
-    total_disasters: 0,
-    active_emergencies: 0,
-    resolved_disasters: 0,
-    critical_incidents: 0,
-    total_resources: 0,
-    available_resource_quantity: 0,
-    available_teams: 0,
-    busy_teams: 0,
-    offline_teams: 0,
+const statusColors = {
+  REPORTED: { bg: '#fff7ed', color: '#c2410c' },
+  VERIFIED: { bg: '#eff6ff', color: '#1d4ed8' },
+  ASSIGNED: { bg: '#f5f3ff', color: '#6d28d9' },
+  IN_PROGRESS: { bg: '#ecfeff', color: '#0e7490' },
+  RESOLVED: { bg: '#dcfce7', color: '#166534' },
+  REJECTED: { bg: '#fee2e2', color: '#b91c1c' },
+}
+
+const teamStatusColors = {
+  AVAILABLE: { bg: '#dcfce7', color: '#166534' },
+  BUSY: { bg: '#ffedd5', color: '#c2410c' },
+  OFFLINE: { bg: '#f1f5f9', color: '#475569' },
+}
+
+const markerIcon = L.icon({
+  iconUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  iconRetinaUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41],
+})
+
+function getToken() {
+  return (
+    localStorage.getItem('resq_token') ||
+    sessionStorage.getItem('resq_token') ||
+    ''
+  )
+}
+
+function getStoredUser() {
+  try {
+    return JSON.parse(
+      localStorage.getItem('resq_user') ||
+        sessionStorage.getItem('resq_user') ||
+        'null',
+    )
+  } catch {
+    return null
+  }
+}
+
+function getArray(data, key) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.[key])) return data[key]
+  if (Array.isArray(data?.data)) return data.data
+  if (Array.isArray(data?.rows)) return data.rows
+  return []
+}
+
+function formatStatus(value) {
+  return String(value || 'REPORTED')
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function formatDate(value) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   })
+}
 
-  const [disasters, setDisasters] = useState([])
-  const [teams, setTeams] = useState([])
+function getSeverityColor(severity) {
+  const value = String(severity || 'MEDIUM').toUpperCase()
 
-  const [loading, setLoading] = useState(true)
-  const [incidentsLoading, setIncidentsLoading] = useState(true)
-  const [teamsLoading, setTeamsLoading] = useState(false)
+  if (value === 'CRITICAL') return '#b91c1c'
+  if (value === 'HIGH') return '#ea580c'
+  if (value === 'MEDIUM') return '#ca8a04'
+  return '#15803d'
+}
 
-  const [error, setError] = useState('')
-  const [actionLoading, setActionLoading] = useState(null)
+function getCoordinates(item) {
+  const latitude = Number(item?.latitude)
+  const longitude = Number(item?.longitude)
 
-  // Team assignment modal
-  const [showTeamModal, setShowTeamModal] = useState(false)
-  const [selectedDisaster, setSelectedDisaster] = useState(null)
-  const [selectedTeamId, setSelectedTeamId] = useState('')
-
-  const storedUser = localStorage.getItem('resq_user')
-
-  const currentUser = (() => {
-    try {
-      return storedUser ? JSON.parse(storedUser) : null
-    } catch {
-      return null
-    }
-  })()
-
-  const userName = currentUser?.name || 'Admin User'
-  const isAdmin = currentUser?.role === 'ADMIN'
-
-  // ==============================
-  // FETCH DASHBOARD STATS
-  // ==============================
-
-  const fetchDashboardStats = async () => {
-    try {
-      setLoading(true)
-
-      const token = localStorage.getItem('resq_token')
-
-      if (!token) {
-        setError('Login session not found.')
-        return
-      }
-
-      const response = await fetch(
-        `${API_URL}/api/dashboard/stats`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'Failed to fetch dashboard data'
-        )
-      }
-
-      setStats(data.stats)
-      setError('')
-    } catch (err) {
-      console.error('Dashboard API error:', err)
-      setError('Unable to load live dashboard data.')
-    } finally {
-      setLoading(false)
-    }
+  if (
+    item?.latitude === null ||
+    item?.latitude === undefined ||
+    item?.longitude === null ||
+    item?.longitude === undefined ||
+    item?.latitude === '' ||
+    item?.longitude === '' ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null
   }
 
-  // ==============================
-  // FETCH DISASTERS
-  // ==============================
+  return [latitude, longitude]
+}
 
-  const fetchDisasters = async () => {
-    try {
-      setIncidentsLoading(true)
-
-      const token = localStorage.getItem('resq_token')
-
-      if (!token) return
-
-      const response = await fetch(
-        `${API_URL}/api/disasters`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'Failed to fetch disasters'
-        )
-      }
-
-      setDisasters(data.disasters || [])
-    } catch (err) {
-      console.error('Disaster API error:', err)
-    } finally {
-      setIncidentsLoading(false)
-    }
-  }
-
-  // ==============================
-  // FETCH RESPONSE TEAMS
-  // ==============================
-
-  const fetchTeams = async () => {
-    try {
-      setTeamsLoading(true)
-
-      const token = localStorage.getItem('resq_token')
-
-      if (!token) return
-
-      const response = await fetch(
-        `${API_URL}/api/teams`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'Failed to fetch response teams'
-        )
-      }
-
-      setTeams(data.teams || [])
-    } catch (err) {
-      console.error('Teams API error:', err)
-      alert(err.message || 'Unable to load response teams.')
-    } finally {
-      setTeamsLoading(false)
-    }
-  }
-
-  // ==============================
-  // INITIAL LOAD
-  // ==============================
+function MapRecenter({ center }) {
+  const map = useMap()
 
   useEffect(() => {
-    fetchDashboardStats()
-    fetchDisasters()
-    fetchTeams()
-  }, [])
-
-  // ==============================
-  // UPDATE DISASTER STATUS
-  // ==============================
-
-  const updateIncidentStatus = async (id, status) => {
-    try {
-      setActionLoading(`${id}-${status}`)
-
-      const token = localStorage.getItem('resq_token')
-
-      const response = await fetch(
-        `${API_URL}/api/disasters/${id}/status`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ status }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'Failed to update incident'
-        )
-      }
-
-      await fetchDisasters()
-      await fetchDashboardStats()
-    } catch (err) {
-      console.error('Status update error:', err)
-      alert(err.message || 'Unable to update incident.')
-    } finally {
-      setActionLoading(null)
+    if (center && center.length === 2) {
+      map.setView(center, Math.max(map.getZoom(), 12), {
+        animate: true,
+      })
     }
-  }
+  }, [center, map])
 
-  // ==============================
-  // OPEN TEAM ASSIGNMENT MODAL
-  // ==============================
+  return null
+}
 
-  const openAssignTeamModal = async (disaster) => {
-    setSelectedDisaster(disaster)
-    setSelectedTeamId('')
-    setShowTeamModal(true)
+function MapSizeFix() {
+  const map = useMap()
 
-    // Refresh teams before showing them
-    await fetchTeams()
-  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => map.invalidateSize(), 150)
+    return () => window.clearTimeout(timer)
+  }, [map])
 
-  // ==============================
-  // ACTUAL TEAM ASSIGNMENT
-  // ==============================
+  return null
+}
 
-  const assignTeam = async () => {
-    if (!selectedDisaster) {
-      alert('No disaster selected.')
-      return
-    }
+function StatCard({ icon: Icon, label, value, color, note }) {
+  return (
+    <section style={styles.card}>
+      <div style={styles.statHeader}>
+        <span style={{ color: COLORS.muted, fontSize: 12, fontWeight: 650 }}>
+          {label}
+        </span>
+        <span
+          style={{
+            width: 39,
+            height: 39,
+            borderRadius: 12,
+            display: 'grid',
+            placeItems: 'center',
+            color,
+            background: `${color}14`,
+            flexShrink: 0,
+          }}
+        >
+          <Icon size={20} />
+        </span>
+      </div>
+      <div style={styles.statValue}>{value}</div>
+      <div style={styles.statNote}>{note}</div>
+    </section>
+  )
+}
 
-    if (!selectedTeamId) {
-      alert('Please select a response team.')
-      return
-    }
+function ActionButton({
+  children,
+  onClick,
+  disabled = false,
+  color = COLORS.blue,
+  background = '#fff',
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        ...styles.actionButton,
+        borderColor: `${color}35`,
+        background,
+        color,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
 
-    try {
-      setActionLoading(
-        `${selectedDisaster.id}-ASSIGN_TEAM`
-      )
+const styles = {
+  card: {
+    background: '#fff',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 17,
+    padding: 20,
+    minWidth: 0,
+    boxShadow: '0 4px 16px rgba(15, 23, 42, 0.035)',
+  },
+  statHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  statValue: {
+    color: COLORS.navy,
+    fontSize: 29,
+    fontWeight: 850,
+    marginTop: 12,
+  },
+  statNote: {
+    color: COLORS.muted,
+    fontSize: 11,
+    marginTop: 5,
+  },
+  actionButton: {
+    display: 'inline-flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 7,
+    border: '1px solid',
+    borderRadius: 10,
+    padding: '9px 12px',
+    fontSize: 12,
+    fontWeight: 750,
+    whiteSpace: 'nowrap',
+  },
+  input: {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    padding: '11px 12px',
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 10,
+    color: COLORS.navy,
+    background: '#fff',
+    fontSize: 12,
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: 19,
+    color: COLORS.navy,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 9,
+  },
+  muted: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 1.6,
+  },
+}
 
-      const token = localStorage.getItem('resq_token')
+function TeamDetail({ team, index, assignedReports = [] }) {
+  const status = String(team.status || 'AVAILABLE').toUpperCase()
+  const statusStyle = teamStatusColors[status] || teamStatusColors.OFFLINE
 
-      const response = await fetch(
-        `${API_URL}/api/assignments`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            disaster_id: selectedDisaster.id,
-            team_id: Number(selectedTeamId),
-          }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(
-          data.message || 'Failed to assign response team'
-        )
-      }
-
-      alert(
-        `✅ ${data.message || 'Response team assigned successfully!'}`
-      )
-
-      setShowTeamModal(false)
-      setSelectedDisaster(null)
-      setSelectedTeamId('')
-
-      // Refresh everything
-      await fetchDisasters()
-      await fetchDashboardStats()
-      await fetchTeams()
-    } catch (err) {
-      console.error('Team assignment error:', err)
-
-      alert(
-        err.message ||
-          'Unable to assign response team.'
-      )
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  const formatNumber = (number) => {
-    return Number(number || 0).toLocaleString('en-IN')
-  }
-
-  const activeEmergencies = stats.active_emergencies
-
-  const pendingReports = disasters.filter(
-    (item) =>
-      String(item.status || '').toUpperCase() === 'REPORTED'
-  ).length
-
-  const resolvedToday = stats.resolved_disasters
-
-  const resourcesAvailable =
-    stats.available_resource_quantity
-
-  const totalTeams =
-    stats.available_teams +
-    stats.busy_teams +
-    stats.offline_teams
-
-  const teamAvailability =
-    totalTeams > 0
-      ? Math.round(
-          (stats.available_teams / totalTeams) * 100
-        )
-      : 0
-
-  const availableTeams = teams.filter(
-    (team) =>
-      String(team.status || '').toUpperCase() ===
-      'AVAILABLE'
+  const teamAssignments = assignedReports.filter(
+    (report) =>
+      String(
+        report.team_id ??
+          report.response_team_id ??
+          report.assigned_team_id ??
+          '',
+      ) === String(team.id),
   )
 
-  const getSeverityClass = (severity) => {
-    return String(severity || 'MEDIUM').toLowerCase()
+  return (
+    <article
+      style={{
+        border: `1px solid ${COLORS.border}`,
+        borderRadius: 14,
+        padding: 15,
+        background: '#fff',
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 11, minWidth: 0 }}>
+          <div
+            style={{
+              width: 43,
+              height: 43,
+              borderRadius: 13,
+              display: 'grid',
+              placeItems: 'center',
+              background: '#eff6ff',
+              color: COLORS.blue,
+              flexShrink: 0,
+            }}
+          >
+            <Truck size={21} />
+          </div>
+
+          <div style={{ minWidth: 0 }}>
+            <h3
+              style={{
+                margin: '2px 0 5px',
+                color: COLORS.navy,
+                fontSize: 14,
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {team.team_name || team.name || `Response Team ${index + 1}`}
+            </h3>
+            <div style={{ color: COLORS.muted, fontSize: 11 }}>
+              Team ID: {team.id ?? 'Not provided'}
+            </div>
+          </div>
+        </div>
+
+        <span
+          style={{
+            background: statusStyle.bg,
+            color: statusStyle.color,
+            padding: '6px 8px',
+            borderRadius: 20,
+            fontSize: 9,
+            fontWeight: 850,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {status}
+        </span>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))',
+          gap: 10,
+          marginTop: 15,
+        }}
+      >
+        <div style={teamInfoStyle}>
+          <UserRound size={15} color={COLORS.blue} />
+          <div>
+            <div style={teamLabelStyle}>Team leader</div>
+            <div style={teamValueStyle}>{team.leader || 'Not provided'}</div>
+          </div>
+        </div>
+
+        <div style={teamInfoStyle}>
+          <Users size={15} color={COLORS.blue} />
+          <div>
+            <div style={teamLabelStyle}>Team members</div>
+            <div style={teamValueStyle}>
+              {team.member_count ?? 'Not provided'}
+            </div>
+          </div>
+        </div>
+
+        <div style={teamInfoStyle}>
+          <Phone size={15} color={COLORS.blue} />
+          <div>
+            <div style={teamLabelStyle}>Contact</div>
+            <div style={teamValueStyle}>
+              {team.phone || 'Not provided'}
+            </div>
+          </div>
+        </div>
+
+        <div style={teamInfoStyle}>
+          <LocationIcon size={15} color={COLORS.blue} />
+          <div>
+            <div style={teamLabelStyle}>Team location</div>
+            <div style={teamValueStyle}>
+              {team.location || 'Not provided'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          borderTop: `1px solid ${COLORS.border}`,
+          marginTop: 13,
+          paddingTop: 12,
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span style={{ fontSize: 11, color: COLORS.muted }}>
+          Unit type: <strong>{team.type || team.team_type || 'Not provided'}</strong>
+        </span>
+        <span style={{ fontSize: 11, color: COLORS.muted }}>
+          Linked reports: <strong>{teamAssignments.length}</strong>
+        </span>
+      </div>
+    </article>
+  )
+}
+
+const teamInfoStyle = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 7,
+  padding: 9,
+  borderRadius: 10,
+  background: '#f8fafc',
+  minWidth: 0,
+}
+
+const teamLabelStyle = {
+  color: COLORS.muted,
+  fontSize: 10,
+  marginBottom: 4,
+}
+
+const teamValueStyle = {
+  color: COLORS.navy,
+  fontSize: 11,
+  fontWeight: 750,
+  overflowWrap: 'anywhere',
+}
+
+function Dashboard() {
+  const user = useMemo(() => getStoredUser(), [])
+  const role = String(
+    user?.role || user?.userType || user?.user_type || 'CITIZEN',
+  ).toUpperCase()
+
+  const isAdmin = role === 'ADMIN'
+  const isResponseTeam = role === 'RESPONSE_TEAM'
+  const isCitizen = role === 'CITIZEN'
+
+  const [reports, setReports] = useState([])
+  const [teams, setTeams] = useState([])
+  const [resources, setResources] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [severityFilter, setSeverityFilter] = useState('ALL')
+  const [teamStatusFilter, setTeamStatusFilter] = useState('ALL')
+  const [teamSearch, setTeamSearch] = useState('')
+  const [locating, setLocating] = useState(false)
+  const [gps, setGps] = useState(null)
+  const [gpsMessage, setGpsMessage] = useState('')
+  const [selectedTeam, setSelectedTeam] = useState({})
+  const [selectedResource, setSelectedResource] = useState({})
+  const [resourceQuantity, setResourceQuantity] = useState({})
+  const [busyId, setBusyId] = useState(null)
+
+  const token = getToken()
+
+  const apiFetch = useCallback(
+    async (path, options = {}) => {
+      const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(options.headers || {}),
+        },
+      })
+
+      const text = await response.text()
+      let data = {}
+
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        data = { message: text }
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || data.error || `Request failed (${response.status})`,
+        )
+      }
+
+      return data
+    },
+    [token],
+  )
+
+  const loadDashboard = useCallback(
+    async (showSpinner = true) => {
+      if (showSpinner) setLoading(true)
+      setError('')
+
+      const results = await Promise.allSettled([
+        apiFetch('/api/disasters'),
+        apiFetch('/api/teams'),
+        apiFetch('/api/resources'),
+      ])
+
+      if (results[0].status === 'fulfilled') {
+        setReports(getArray(results[0].value, 'disasters'))
+      }
+
+      if (results[1].status === 'fulfilled') {
+        setTeams(getArray(results[1].value, 'teams'))
+      }
+
+      if (results[2].status === 'fulfilled') {
+        setResources(getArray(results[2].value, 'resources'))
+      }
+
+      if (results[0].status === 'rejected') {
+        setError(
+          `Could not load emergency reports: ${results[0].reason?.message || 'Check the backend and your login.'}`,
+        )
+      } else {
+        const failed = results
+          .slice(1)
+          .filter((result) => result.status === 'rejected')
+
+        if (failed.length) {
+          setError(
+            `Reports loaded, but some dashboard data could not load: ${failed
+              .map((result) => result.reason?.message)
+              .filter(Boolean)
+              .join('; ')}`,
+          )
+        }
+      }
+
+      setLoading(false)
+      setRefreshing(false)
+    },
+    [apiFetch],
+  )
+
+  useEffect(() => {
+    loadDashboard(true)
+  }, [loadDashboard])
+
+  const myReports = useMemo(() => {
+    if (!isCitizen || !user) return reports
+
+    const userId = user.id ?? user.user_id
+    const email = String(user.email || '').toLowerCase()
+
+    return reports.filter((report) => {
+      const reporterId =
+        report.reported_by ??
+        report.reporter_id ??
+        report.user_id ??
+        report.created_by
+
+      const reporterEmail = String(
+        report.reporter_email || report.email || '',
+      ).toLowerCase()
+
+      if (userId != null && reporterId != null) {
+        return String(reporterId) === String(userId)
+      }
+
+      if (email && reporterEmail) return reporterEmail === email
+      return false
+    })
+  }, [reports, isCitizen, user])
+
+  const filteredReports = useMemo(() => {
+    const query = search.trim().toLowerCase()
+
+    return myReports.filter((item) => {
+      const status = String(item.status || 'REPORTED').toUpperCase()
+      const severity = String(item.severity || 'MEDIUM').toUpperCase()
+
+      const matchesSearch =
+        !query ||
+        String(item.disaster_type || '').toLowerCase().includes(query) ||
+        String(item.location || '').toLowerCase().includes(query) ||
+        String(item.description || '').toLowerCase().includes(query) ||
+        String(item.reporter_name || '').toLowerCase().includes(query)
+
+      return (
+        matchesSearch &&
+        (statusFilter === 'ALL' || status === statusFilter) &&
+        (severityFilter === 'ALL' || severity === severityFilter)
+      )
+    })
+  }, [myReports, search, statusFilter, severityFilter])
+
+  const reportsWithCoordinates = useMemo(
+    () =>
+      reports
+        .map((report) => ({
+          ...report,
+          coordinates: getCoordinates(report),
+        }))
+        .filter((report) => report.coordinates),
+    [reports],
+  )
+
+  const mapCenter = useMemo(() => {
+    if (gps) return [gps.latitude, gps.longitude]
+    return reportsWithCoordinates[0]?.coordinates || DEFAULT_CENTER
+  }, [gps, reportsWithCoordinates])
+
+  const computedStats = useMemo(() => {
+    const source = isCitizen ? myReports : reports
+
+    return {
+      total: source.length,
+      active: source.filter((item) =>
+        ['REPORTED', 'VERIFIED', 'ASSIGNED', 'IN_PROGRESS'].includes(
+          String(item.status || 'REPORTED').toUpperCase(),
+        ),
+      ).length,
+      critical: source.filter(
+        (item) =>
+          String(item.severity || '').toUpperCase() === 'CRITICAL' &&
+          !['RESOLVED', 'REJECTED'].includes(
+            String(item.status || '').toUpperCase(),
+          ),
+      ).length,
+      resolved: source.filter(
+        (item) => String(item.status || '').toUpperCase() === 'RESOLVED',
+      ).length,
+    }
+  }, [reports, myReports, isCitizen])
+
+  const availableTeams = useMemo(
+    () =>
+      teams.filter(
+        (team) =>
+          String(team.status || 'AVAILABLE').toUpperCase() === 'AVAILABLE',
+      ),
+    [teams],
+  )
+
+  const filteredTeams = useMemo(() => {
+    const query = teamSearch.trim().toLowerCase()
+
+    return teams.filter((team) => {
+      const status = String(team.status || 'AVAILABLE').toUpperCase()
+      const searchableText = [
+        team.team_name,
+        team.name,
+        team.type,
+        team.leader,
+        team.phone,
+        team.location,
+        team.id,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return (
+        (teamStatusFilter === 'ALL' || status === teamStatusFilter) &&
+        (!query || searchableText.includes(query))
+      )
+    })
+  }, [teams, teamSearch, teamStatusFilter])
+
+  const teamStats = useMemo(
+    () => ({
+      total: teams.length,
+      available: teams.filter(
+        (team) =>
+          String(team.status || 'AVAILABLE').toUpperCase() === 'AVAILABLE',
+      ).length,
+      busy: teams.filter(
+        (team) => String(team.status || '').toUpperCase() === 'BUSY',
+      ).length,
+      offline: teams.filter(
+        (team) => String(team.status || '').toUpperCase() === 'OFFLINE',
+      ).length,
+    }),
+    [teams],
+  )
+
+  const notifyAction = (message, isError = false) => {
+    setActionMessage(isError ? '' : message)
+    setActionError(isError ? message : '')
   }
 
-  const getIncidentIcon = (type) => {
-    const disasterType = String(type || '').toUpperCase()
-
-    if (disasterType.includes('FLOOD')) {
-      return <Waves size={20} />
+  const updateReportStatus = async (reportId, newStatus) => {
+    if (!reportId) {
+      notifyAction('This report does not have a valid ID.', true)
+      return
     }
 
-    if (
-      disasterType.includes('FIRE') ||
-      disasterType.includes('EARTHQUAKE')
-    ) {
-      return <AlertTriangle size={20} />
+    if (!isAdmin && !isResponseTeam) {
+      notifyAction('You are not authorized to update this report.', true)
+      return
     }
 
-    return <HeartPulse size={20} />
+    setBusyId(reportId)
+    setActionMessage('')
+    setActionError('')
+
+    try {
+      await apiFetch(`/api/disasters/${reportId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      notifyAction(`Report status updated to ${formatStatus(newStatus)}.`)
+      await loadDashboard(false)
+    } catch (requestError) {
+      notifyAction(
+        requestError.message || 'Could not update report status.',
+        true,
+      )
+    } finally {
+      setBusyId(null)
+    }
   }
+
+  const assignTeam = async (reportId) => {
+    if (!isAdmin) {
+      notifyAction('Only an Admin can assign a response team.', true)
+      return
+    }
+
+    const teamId = selectedTeam[reportId]
+
+    if (!teamId) {
+      notifyAction('Select a response team before assigning this report.', true)
+      return
+    }
+
+    const report = reports.find(
+      (item) => String(item.id) === String(reportId),
+    )
+
+    if (!report) {
+      notifyAction('Report not found. Refresh the dashboard and try again.', true)
+      return
+    }
+
+    const selectedTeamRecord = availableTeams.find(
+      (team) => String(team.id) === String(teamId),
+    )
+
+    if (!selectedTeamRecord) {
+      notifyAction(
+        'This team is no longer available. Refresh the dashboard and select another team.',
+        true,
+      )
+      await loadDashboard(false)
+      return
+    }
+
+    setBusyId(reportId)
+    setActionMessage('')
+    setActionError('')
+
+    try {
+      // The backend expects snake_case fields.
+      await apiFetch('/api/assignments', {
+        method: 'POST',
+        body: JSON.stringify({
+          disaster_id: reportId,
+          team_id: teamId,
+        }),
+      })
+
+      notifyAction(
+        `${selectedTeamRecord.team_name || `Team ${teamId}`} assigned successfully to report #${reportId}.`,
+      )
+
+      setSelectedTeam((current) => ({ ...current, [reportId]: '' }))
+      await loadDashboard(false)
+    } catch (requestError) {
+      notifyAction(
+        requestError.message ||
+          'Could not assign the team. Check team availability and the backend.',
+        true,
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const allocateResource = async (reportId) => {
+    if (!isAdmin) {
+      notifyAction('Only an Admin can allocate resources.', true)
+      return
+    }
+
+    const resourceId = selectedResource[reportId]
+    const quantity = Number(resourceQuantity[reportId])
+
+    if (!resourceId) {
+      notifyAction('Select a resource to allocate.', true)
+      return
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      notifyAction('Enter a quantity greater than zero.', true)
+      return
+    }
+
+    const resource = resources.find(
+      (item) => String(item.id) === String(resourceId),
+    )
+
+    if (!resource) {
+      notifyAction('Selected resource was not found. Refresh and try again.', true)
+      return
+    }
+
+    const available = Number(
+      resource.quantity ?? resource.available_quantity ?? resource.stock,
+    )
+
+    if (Number.isFinite(available) && quantity > available) {
+      notifyAction(`Only ${available} unit(s) of this resource are listed.`, true)
+      return
+    }
+
+    setBusyId(reportId)
+    setActionMessage('')
+    setActionError('')
+
+    try {
+      await apiFetch('/api/allocations', {
+        method: 'POST',
+        body: JSON.stringify({
+          resource_id: resourceId,
+          disaster_id: reportId,
+          quantity,
+        }),
+      })
+
+      notifyAction('Resource allocation submitted successfully.')
+      setSelectedResource((current) => ({ ...current, [reportId]: '' }))
+      setResourceQuantity((current) => ({ ...current, [reportId]: '' }))
+      await loadDashboard(false)
+    } catch (requestError) {
+      notifyAction(
+        requestError.message ||
+          'Could not allocate resource. Check the allocation API and stock.',
+        true,
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const refresh = async () => {
+    setRefreshing(true)
+    await loadDashboard(false)
+  }
+
+  const getCurrentLocation = () => {
+    setGpsMessage('')
+    setActionMessage('')
+    setActionError('')
+
+    if (!navigator.geolocation) {
+      setGpsMessage('Geolocation is not supported by this browser.')
+      return
+    }
+
+    setLocating(true)
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGps({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        })
+        setGpsMessage('Current location detected successfully.')
+        setLocating(false)
+      },
+      (locationError) => {
+        const messages = {
+          1: 'Location permission was denied. Allow location access in browser settings.',
+          2: 'Your location could not be determined. Try again outdoors.',
+          3: 'Location request timed out. Please try again.',
+        }
+
+        setGpsMessage(
+          messages[locationError.code] ||
+            'Could not access your location. Please try again.',
+        )
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
+    )
+  }
+
+  const cardStyle = styles.card
+  const inputStyle = styles.input
 
   return (
-    <div className="dashboard-page">
-
-      {/* =========================
-          TOP NAVBAR
-      ========================= */}
-
-      <header className="dashboard-navbar">
-        <div className="dashboard-brand">
-          <div className="dashboard-brand-icon">
-            <ShieldCheck size={24} />
-          </div>
-
+    <div
+      style={{
+        minHeight: '100vh',
+        background: COLORS.background,
+        color: COLORS.text,
+      }}
+    >
+      <main
+        style={{
+          maxWidth: 1500,
+          margin: '0 auto',
+          padding: '26px clamp(14px, 3vw, 34px) 18px',
+        }}
+      >
+        <header
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 18,
+            flexWrap: 'wrap',
+            marginBottom: 25,
+          }}
+        >
           <div>
-            <strong>RESQ</strong>
-            <span>SMART RESPONSE</span>
-          </div>
-        </div>
-
-        <div className="dashboard-nav-right">
-          <div className="system-status">
-            <span></span>
-            All Systems Operational
-          </div>
-
-          <button
-            type="button"
-            className="dashboard-notification"
-            aria-label="Notifications"
-            title="Notifications"
-            onClick={() => navigate('/notifications')}
-          >
-            <Bell size={19} />
-            <i></i>
-          </button>
-
-          <div className="user-profile">
-            <div className="profile-avatar">
-              {userName.charAt(0).toUpperCase()}
+            <div
+              style={{
+                color: COLORS.blue,
+                fontSize: 11,
+                fontWeight: 850,
+                letterSpacing: 2,
+                marginBottom: 8,
+              }}
+            >
+              RESQ · SMART RESPONSE NETWORK
             </div>
 
-            <div className="profile-info">
-              <strong>{userName}</strong>
-
-              <span>
-                {isAdmin
-                  ? 'Administrator'
-                  : 'Response User'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* =========================
-          MAIN CONTENT
-      ========================= */}
-
-      <main className="dashboard-content">
-
-        {/* WELCOME */}
-
-        <section className="dashboard-heading">
-          <div>
-            <span className="dashboard-eyebrow">
-              <span className="live-dot"></span>
-              LIVE RESPONSE CENTER
-            </span>
-
-            <h1>
-              Good morning, {userName.split(' ')[0]} 👋
+            <h1
+              style={{
+                margin: 0,
+                color: COLORS.navy,
+                fontSize: 'clamp(25px, 3vw, 34px)',
+                letterSpacing: -1,
+              }}
+            >
+              {isAdmin
+                ? 'Admin Dashboard'
+                : isResponseTeam
+                  ? 'Response Team Dashboard'
+                  : 'Emergency Dashboard'}
             </h1>
 
-            <p>
-              Monitor emergencies, coordinate response teams
-              and manage critical resources from one place.
+            <p
+              style={{
+                margin: '8px 0 0',
+                color: COLORS.muted,
+                fontSize: 13,
+              }}
+            >
+              Welcome{user?.name ? `, ${user.name}` : ''}. Monitor emergencies
+              and response activity.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {!isAdmin && (
-              <button
-                type="button"
-                className="emergency-action"
-                onClick={() => navigate('/report-disaster')}
-                style={{
-                  background: '#dc2626',
-                  color: '#fff',
-                  border: 'none',
-                }}
-              >
-                <AlertTriangle size={18} />
-                Report Disaster
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="emergency-action"
-              onClick={() => {
-                fetchDisasters()
-                fetchDashboardStats()
-                fetchTeams()
+          <div
+            style={{
+              display: 'flex',
+              gap: 9,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            <span
+              style={{
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 20,
+                background: '#fff',
+                color: COLORS.navy,
+                padding: '10px 13px',
+                fontSize: 11,
+                fontWeight: 800,
               }}
             >
-              <RefreshCw size={18} />
-              Refresh Center
-            </button>
-          </div>
-        </section>
+              <ShieldCheck
+                size={14}
+                style={{ verticalAlign: 'middle', marginRight: 6 }}
+              />
+              {formatStatus(role)}
+            </span>
 
-        {/* API ERROR */}
+            <ActionButton onClick={refresh} disabled={refreshing}>
+              <RefreshCw size={15} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </ActionButton>
+          </div>
+        </header>
 
         {error && (
           <div
+            role="alert"
             style={{
-              marginBottom: '20px',
-              padding: '14px 18px',
-              borderRadius: '14px',
-              background: '#fff4f2',
-              border: '1px solid #ffd2cc',
-              color: '#c0392b',
-              fontSize: '14px',
-              fontWeight: '600',
+              marginBottom: 18,
+              border: '1px solid #fecaca',
+              background: '#fff1f2',
+              color: '#b91c1c',
+              borderRadius: 12,
+              padding: 14,
+              fontSize: 13,
+              lineHeight: 1.6,
             }}
           >
-            ⚠️ {error}
+            <strong>Dashboard warning:</strong> {error}
+            <div style={{ marginTop: 9 }}>
+              <ActionButton onClick={refresh} color={COLORS.red}>
+                <RefreshCw size={14} /> Try again
+              </ActionButton>
+            </div>
           </div>
         )}
 
-        {/* =========================
-            STAT CARDS
-        ========================= */}
-
-        <section className="dashboard-stats">
-
-          <div className="dash-stat-card danger-card">
-            <div className="stat-card-top">
-              <div className="dash-stat-icon danger">
-                <AlertTriangle size={22} />
-              </div>
-
-              <span className="trend negative">
-                LIVE
-              </span>
-            </div>
-
-            <span className="stat-title">
-              Active Emergencies
-            </span>
-
-            <strong className="stat-number">
-              {loading
-                ? '—'
-                : formatNumber(activeEmergencies)}
-            </strong>
-
-            <small>
-              Requires immediate attention
-            </small>
-          </div>
-
-          <div className="dash-stat-card blue-card">
-            <div className="stat-card-top">
-              <div className="dash-stat-icon blue">
-                <Clock3 size={22} />
-              </div>
-
-              <span className="trend positive">
-                LIVE
-              </span>
-            </div>
-
-            <span className="stat-title">
-              Pending Reports
-            </span>
-
-            <strong className="stat-number">
-              {incidentsLoading
-                ? '—'
-                : formatNumber(pendingReports)}
-            </strong>
-
-            <small>
-              Waiting for verification
-            </small>
-          </div>
-
-          <div className="dash-stat-card green-card">
-            <div className="stat-card-top">
-              <div className="dash-stat-icon green">
-                <CheckCircle2 size={22} />
-              </div>
-
-              <span className="trend positive">
-                LIVE
-              </span>
-            </div>
-
-            <span className="stat-title">
-              Resolved Today
-            </span>
-
-            <strong className="stat-number">
-              {loading
-                ? '—'
-                : formatNumber(resolvedToday)}
-            </strong>
-
-            <small>
-              Successfully completed
-            </small>
-          </div>
-
-          <div className="dash-stat-card orange-card">
-            <div className="stat-card-top">
-              <div className="dash-stat-icon orange">
-                <Package size={22} />
-              </div>
-
-              <span className="trend positive">
-                LIVE
-              </span>
-            </div>
-
-            <span className="stat-title">
-              Resources Available
-            </span>
-
-            <strong className="stat-number">
-              {loading
-                ? '—'
-                : formatNumber(resourcesAvailable)}
-            </strong>
-
-            <small>
-              Units currently available
-            </small>
-          </div>
-
-        </section>
-
-        {/* =========================
-            ADMIN VERIFICATION CENTER
-        ========================= */}
-
-        {isAdmin && (
-          <section
-            className="dashboard-panel"
+        {actionMessage && (
+          <div
+            role="status"
             style={{
-              marginBottom: '28px',
-              overflow: 'hidden',
+              marginBottom: 16,
+              padding: 12,
+              borderRadius: 10,
+              background: '#f0fdf4',
+              color: '#166534',
+              fontSize: 12,
             }}
           >
-            <div className="panel-header">
-              <div>
-                <span className="panel-kicker">
-                  ADMIN CONTROL CENTER
-                </span>
+            <CheckCircle2
+              size={15}
+              style={{ verticalAlign: 'middle', marginRight: 7 }}
+            />
+            {actionMessage}
+          </div>
+        )}
 
-                <h2>
-                  Disaster Verification
-                </h2>
-              </div>
+        {actionError && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 16,
+              padding: 12,
+              borderRadius: 10,
+              background: '#fff1f2',
+              color: '#b91c1c',
+              fontSize: 12,
+              lineHeight: 1.6,
+            }}
+          >
+            <XCircle
+              size={15}
+              style={{ verticalAlign: 'middle', marginRight: 7 }}
+            />
+            {actionError}
+          </div>
+        )}
 
-              <button
-                type="button"
-                className="view-all"
-                onClick={() => {
-                  fetchDisasters()
-                  fetchDashboardStats()
-                  fetchTeams()
-                }}
-              >
-                Refresh
-                <RefreshCw size={16} />
-              </button>
-            </div>
+        <section
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gap: 14,
+            marginBottom: 22,
+          }}
+        >
+          <StatCard
+            icon={FileText}
+            label={isCitizen ? 'My Reports' : 'Total Reports'}
+            value={loading ? '…' : computedStats.total}
+            color={COLORS.blue}
+            note="Reports returned by the backend"
+          />
+          <StatCard
+            icon={Activity}
+            label="Active Emergencies"
+            value={loading ? '…' : computedStats.active}
+            color="#ea580c"
+            note="Not yet resolved or rejected"
+          />
+          <StatCard
+            icon={AlertTriangle}
+            label="Critical Reports"
+            value={loading ? '…' : computedStats.critical}
+            color={COLORS.red}
+            note="Unresolved critical incidents"
+          />
+          <StatCard
+            icon={CheckCircle2}
+            label="Resolved Reports"
+            value={loading ? '…' : computedStats.resolved}
+            color={COLORS.green}
+            note="Marked as resolved"
+          />
+        </section>
 
-            {incidentsLoading ? (
+        {/* NEW: Admin team availability summary */}
+        {isAdmin && (
+          <section
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: 12,
+              marginBottom: 22,
+            }}
+          >
+            {[
+              {
+                label: 'Total Response Teams',
+                value: teamStats.total,
+                color: COLORS.blue,
+                icon: Users,
+              },
+              {
+                label: 'Available Teams',
+                value: teamStats.available,
+                color: COLORS.green,
+                icon: CheckCircle2,
+              },
+              {
+                label: 'Teams on Mission',
+                value: teamStats.busy,
+                color: '#ea580c',
+                icon: Truck,
+              },
+              {
+                label: 'Offline Teams',
+                value: teamStats.offline,
+                color: COLORS.muted,
+                icon: Clock3,
+              },
+            ].map((item) => (
               <div
+                key={item.label}
                 style={{
-                  padding: '40px 20px',
-                  textAlign: 'center',
-                  color: '#64748b',
-                }}
-              >
-                Loading reported incidents...
-              </div>
-            ) : disasters.length === 0 ? (
-              <div
-                style={{
-                  padding: '40px 20px',
-                  textAlign: 'center',
-                  color: '#64748b',
-                }}
-              >
-                <CheckCircle2
-                  size={38}
-                  style={{ marginBottom: '10px' }}
-                />
-
-                <h3 style={{ margin: '0 0 6px' }}>
-                  No disaster reports
-                </h3>
-
-                <p style={{ margin: 0 }}>
-                  New citizen reports will appear here.
-                </p>
-              </div>
-            ) : (
-              <div
-                style={{
+                  ...cardStyle,
+                  padding: 16,
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: '14px',
-                  padding: '0 4px 20px',
+                  gap: 12,
+                  alignItems: 'center',
                 }}
               >
-                {disasters.map((disaster) => {
-                  const severity =
-                    String(
-                      disaster.severity || 'MEDIUM'
-                    ).toUpperCase()
-
-                  const status =
-                    String(
-                      disaster.status || 'REPORTED'
-                    ).toUpperCase()
-
-                  return (
-                    <div
-                      key={disaster.id}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns:
-                          '52px minmax(0, 1fr) auto',
-                        gap: '16px',
-                        alignItems: 'center',
-                        padding: '18px',
-                        borderRadius: '18px',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                      }}
-                    >
-
-                      {/* ICON */}
-
-                      <div
-                        className={`incident-type ${getSeverityClass(
-                          severity
-                        )}`}
-                        style={{
-                          width: '52px',
-                          height: '52px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: '15px',
-                        }}
-                      >
-                        {getIncidentIcon(
-                          disaster.disaster_type
-                        )}
-                      </div>
-
-                      {/* DETAILS */}
-
-                      <div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '9px',
-                            flexWrap: 'wrap',
-                            marginBottom: '6px',
-                          }}
-                        >
-                          <strong
-                            style={{
-                              fontSize: '16px',
-                              color: '#172033',
-                            }}
-                          >
-                            {disaster.disaster_type}
-                          </strong>
-
-                          <span
-                            className={`priority ${getSeverityClass(
-                              severity
-                            )}`}
-                          >
-                            {severity}
-                          </span>
-
-                          <span
-                            style={{
-                              padding: '4px 9px',
-                              borderRadius: '999px',
-                              background:
-                                status === 'RESOLVED'
-                                  ? '#dcfce7'
-                                  : status === 'ASSIGNED'
-                                  ? '#dcfce7'
-                                  : status === 'REJECTED'
-                                  ? '#fee2e2'
-                                  : '#e0f2fe',
-                              color:
-                                status === 'RESOLVED'
-                                  ? '#15803d'
-                                  : status === 'ASSIGNED'
-                                  ? '#15803d'
-                                  : status === 'REJECTED'
-                                  ? '#dc2626'
-                                  : '#0369a1',
-                              fontSize: '11px',
-                              fontWeight: 800,
-                            }}
-                          >
-                            {status}
-                          </span>
-                        </div>
-
-                        <p
-                          style={{
-                            margin: '0 0 5px',
-                            color: '#475569',
-                            fontSize: '14px',
-                          }}
-                        >
-                          📍 {disaster.location}
-                        </p>
-
-                        <small
-                          style={{
-                            color: '#64748b',
-                            display: 'block',
-                          }}
-                        >
-                          {disaster.description ||
-                            'No description provided.'}
-                        </small>
-
-                        {disaster.name && (
-                          <small
-                            style={{
-                              display: 'block',
-                              marginTop: '6px',
-                              color: '#94a3b8',
-                            }}
-                          >
-                            Reported by: {disaster.name}
-                          </small>
-                        )}
-                      </div>
-
-                      {/* ACTIONS */}
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '8px',
-                          flexWrap: 'wrap',
-                          justifyContent: 'flex-end',
-                        }}
-                      >
-
-                        {/* VERIFY / REJECT */}
-
-                        {status === 'REPORTED' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateIncidentStatus(
-                                  disaster.id,
-                                  'VERIFIED'
-                                )
-                              }
-                              disabled={
-                                actionLoading !== null
-                              }
-                              style={{
-                                border: 'none',
-                                borderRadius: '11px',
-                                padding: '10px 14px',
-                                background: '#16a34a',
-                                color: 'white',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <CheckCircle2
-                                size={15}
-                                style={{
-                                  verticalAlign: 'middle',
-                                  marginRight: '5px',
-                                }}
-                              />
-
-                              {actionLoading ===
-                              `${disaster.id}-VERIFIED`
-                                ? 'Verifying...'
-                                : 'Verify'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateIncidentStatus(
-                                  disaster.id,
-                                  'REJECTED'
-                                )
-                              }
-                              disabled={
-                                actionLoading !== null
-                              }
-                              style={{
-                                border: '1px solid #fecaca',
-                                borderRadius: '11px',
-                                padding: '10px 14px',
-                                background: '#fff1f2',
-                                color: '#dc2626',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <XCircle
-                                size={15}
-                                style={{
-                                  verticalAlign: 'middle',
-                                  marginRight: '5px',
-                                }}
-                              />
-
-                              Reject
-                            </button>
-                          </>
-                        )}
-
-                        {/* REAL ASSIGN TEAM */}
-
-                        {status === 'VERIFIED' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openAssignTeamModal(disaster)
-                            }
-                            disabled={
-                              actionLoading !== null
-                            }
-                            style={{
-                              border: 'none',
-                              borderRadius: '11px',
-                              padding: '10px 14px',
-                              background: '#2563eb',
-                              color: 'white',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '5px',
-                            }}
-                          >
-                            <UserCheck size={16} />
-
-                            Assign Team
-
-                            <ChevronRight size={15} />
-                          </button>
-                        )}
-
-                        {/* ALREADY ASSIGNED */}
-
-                        {status === 'ASSIGNED' && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '7px',
-                              padding: '10px 14px',
-                              borderRadius: '11px',
-                              background: '#dcfce7',
-                              color: '#15803d',
-                              fontWeight: 800,
-                              fontSize: '13px',
-                            }}
-                          >
-                            <CheckCircle2 size={16} />
-                            Team Assigned
-                          </div>
-                        )}
-
-                        {/* RESOLVED */}
-
-                        {status === 'RESOLVED' && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '7px',
-                              padding: '10px 14px',
-                              borderRadius: '11px',
-                              background: '#dcfce7',
-                              color: '#15803d',
-                              fontWeight: 800,
-                              fontSize: '13px',
-                            }}
-                          >
-                            <CheckCircle2 size={16} />
-                            Resolved
-                          </div>
-                        )}
-
-                        {/* REJECTED */}
-
-                        {status === 'REJECTED' && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '7px',
-                              padding: '10px 14px',
-                              borderRadius: '11px',
-                              background: '#fee2e2',
-                              color: '#dc2626',
-                              fontWeight: 800,
-                              fontSize: '13px',
-                            }}
-                          >
-                            <XCircle size={16} />
-                            Rejected
-                          </div>
-                        )}
-
-                      </div>
-                    </div>
-                  )
-                })}
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: `${item.color}14`,
+                    color: item.color,
+                    flexShrink: 0,
+                  }}
+                >
+                  <item.icon size={19} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: COLORS.muted,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 24,
+                      fontWeight: 850,
+                      color: COLORS.navy,
+                      marginTop: 4,
+                    }}
+                  >
+                    {loading ? '…' : item.value}
+                  </div>
+                </div>
               </div>
-            )}
+            ))}
           </section>
         )}
 
-        {/* =========================
-            MAIN GRID
-        ========================= */}
-
-        <section className="dashboard-main-grid">
-
-          {/* INCIDENTS */}
-
-          <div className="dashboard-panel incidents-panel">
-
-            <div className="panel-header">
-              <div>
-                <span className="panel-kicker">
-                  PRIORITY INCIDENTS
-                </span>
-
-                <h2>Active Emergencies</h2>
-              </div>
-
-              <button
-                type="button"
-                className="view-all"
-                onClick={fetchDisasters}
-              >
-                Refresh
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <div className="incident-list">
-
-              {disasters
-                .filter(
-                  (item) =>
-                    String(item.status || '').toUpperCase() !==
-                      'RESOLVED' &&
-                    String(item.status || '').toUpperCase() !==
-                      'REJECTED'
-                )
-                .slice(0, 5)
-                .map((disaster) => (
-                  <div
-                    className="incident-row"
-                    key={disaster.id}
-                  >
-                    <div
-                      className={`incident-type ${getSeverityClass(
-                        disaster.severity
-                      )}`}
-                    >
-                      {getIncidentIcon(
-                        disaster.disaster_type
-                      )}
-                    </div>
-
-                    <div className="incident-details">
-                      <div className="incident-title">
-                        <strong>
-                          {disaster.disaster_type}
-                        </strong>
-
-                        <span
-                          className={`priority ${getSeverityClass(
-                            disaster.severity
-                          )}`}
-                        >
-                          {disaster.severity}
-                        </span>
-                      </div>
-
-                      <p>
-                        📍 {disaster.location}
-                      </p>
-
-                      <small>
-                        {disaster.description ||
-                          'Response monitoring active'}
-                      </small>
-                    </div>
-
-                    <div className="incident-status">
-                      <span>
-                        {disaster.status}
-                      </span>
-
-                      <strong>
-                        {disaster.name ||
-                          'Reported citizen'}
-                      </strong>
-                    </div>
-                  </div>
-                ))}
-
-              {!incidentsLoading &&
-                disasters.filter(
-                  (item) =>
-                    String(item.status || '').toUpperCase() !==
-                      'RESOLVED' &&
-                    String(item.status || '').toUpperCase() !==
-                      'REJECTED'
-                ).length === 0 && (
-                  <div
-                    style={{
-                      padding: '30px',
-                      textAlign: 'center',
-                      color: '#64748b',
-                    }}
-                  >
-                    No active incidents right now.
-                  </div>
-                )}
-            </div>
-          </div>
-
-          {/* =========================
-              RESPONSE TEAMS
-          ========================= */}
-
-          <div className="dashboard-panel teams-panel">
-
-            <div className="panel-header">
-              <div>
-                <span className="panel-kicker">
-                  FIELD OPERATIONS
-                </span>
-
-                <h2>Response Teams</h2>
-              </div>
-
-              <button
-                type="button"
-                className="view-all"
-                onClick={fetchTeams}
-              >
-                Refresh
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <div className="team-summary">
-              <div className="team-summary-icon">
-                <Users size={24} />
-              </div>
-
-              <div>
-                <strong>
-                  {loading
-                    ? '—'
-                    : formatNumber(totalTeams)}
-                </strong>
-
-                <span>
-                  Teams deployed & available
-                </span>
-              </div>
-            </div>
-
-            <div className="team-progress">
-              <div className="progress-label">
-                <span>Team availability</span>
-
-                <strong>
-                  {loading
-                    ? '—'
-                    : `${teamAvailability}%`}
-                </strong>
-              </div>
-
-              <div className="progress-track">
-                <div
-                  className="progress-fill"
-                  style={{
-                    width: `${teamAvailability}%`,
-                  }}
-                ></div>
-              </div>
-            </div>
-
-            <div className="team-list">
-
-              <div className="team-row">
-                <div className="team-avatar">
-                  A
-                </div>
-
-                <div>
-                  <strong>
-                    Available Teams
-                  </strong>
-
-                  <span>
-                    Ready for deployment
-                  </span>
-                </div>
-
-                <b className="available">
-                  {loading
-                    ? '—'
-                    : stats.available_teams}
-                </b>
-              </div>
-
-              <div className="team-row">
-                <div className="team-avatar">
-                  B
-                </div>
-
-                <div>
-                  <strong>
-                    Teams on Mission
-                  </strong>
-
-                  <span>
-                    Currently deployed
-                  </span>
-                </div>
-
-                <b className="busy">
-                  {loading
-                    ? '—'
-                    : stats.busy_teams}
-                </b>
-              </div>
-
-              <div className="team-row">
-                <div className="team-avatar">
-                  C
-                </div>
-
-                <div>
-                  <strong>
-                    Offline Teams
-                  </strong>
-
-                  <span>
-                    Currently unavailable
-                  </span>
-                </div>
-
-                <b className="busy">
-                  {loading
-                    ? '—'
-                    : stats.offline_teams}
-                </b>
-              </div>
-
-            </div>
-
-            {/* TEAM LIST FROM DATABASE */}
-
-            {teams.length > 0 && (
-              <div
-                style={{
-                  marginTop: '20px',
-                  paddingTop: '18px',
-                  borderTop: '1px solid #e2e8f0',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    color: '#64748b',
-                    marginBottom: '12px',
-                    letterSpacing: '0.08em',
-                  }}
-                >
-                  REGISTERED TEAMS
-                </div>
-
-                {teams.slice(0, 3).map((team) => (
-                  <div
-                    key={team.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 0',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '10px',
-                        background:
-                          String(team.status).toUpperCase() ===
-                          'AVAILABLE'
-                            ? '#dcfce7'
-                            : '#fee2e2',
-                        color:
-                          String(team.status).toUpperCase() ===
-                          'AVAILABLE'
-                            ? '#15803d'
-                            : '#dc2626',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Users size={17} />
-                    </div>
-
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      <strong
-                        style={{
-                          display: 'block',
-                          fontSize: '13px',
-                          color: '#172033',
-                        }}
-                      >
-                        {team.team_name}
-                      </strong>
-
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          color: '#64748b',
-                        }}
-                      >
-                        {team.type}
-                      </span>
-                    </div>
-
-                    <b
-                      style={{
-                        fontSize: '10px',
-                        color:
-                          String(team.status).toUpperCase() ===
-                          'AVAILABLE'
-                            ? '#15803d'
-                            : '#dc2626',
-                      }}
-                    >
-                      {team.status}
-                    </b>
-                  </div>
-                ))}
-              </div>
-            )}
-
-          </div>
-        </section>
-
-        {/* =========================
-            RESOURCE OVERVIEW
-        ========================= */}
-
-        <section className="dashboard-bottom-grid">
-
-          <div className="dashboard-panel resource-panel">
-
-            <div className="panel-header">
-              <div>
-                <span className="panel-kicker">
-                  RESOURCE MANAGEMENT
-                </span>
-
-                <h2>Critical Resources</h2>
-              </div>
-
-              <button
-                type="button"
-                className="view-all"
-              >
-                View inventory
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <div className="resource-grid">
-
-              <div className="resource-card">
-                <div className="resource-icon water">
-                  <Droplets size={20} />
-                </div>
-
-                <div>
-                  <strong>
-                    {loading
-                      ? '—'
-                      : formatNumber(
-                          resourcesAvailable
-                        )}
-                  </strong>
-
-                  <span>
-                    Total Available Units
-                  </span>
-                </div>
-
-                <small className="resource-good">
-                  Live
-                </small>
-              </div>
-
-              <div className="resource-card">
-                <div className="resource-icon medical-resource">
-                  <HeartPulse size={20} />
-                </div>
-
-                <div>
-                  <strong>
-                    {loading
-                      ? '—'
-                      : formatNumber(
-                          stats.total_resources
-                        )}
-                  </strong>
-
-                  <span>
-                    Resource Types
-                  </span>
-                </div>
-
-                <small className="resource-warning">
-                  Tracked
-                </small>
-              </div>
-
-              <div className="resource-card">
-                <div className="resource-icon vehicle">
-                  <Truck size={20} />
-                </div>
-
-                <div>
-                  <strong>
-                    {loading
-                      ? '—'
-                      : formatNumber(
-                          stats.available_teams
-                        )}
-                  </strong>
-
-                  <span>
-                    Teams Available
-                  </span>
-                </div>
-
-                <small className="resource-good">
-                  Ready
-                </small>
-              </div>
-
-              <div className="resource-card">
-                <div className="resource-icon shelter">
-                  <ShieldCheck size={20} />
-                </div>
-
-                <div>
-                  <strong>
-                    {loading
-                      ? '—'
-                      : formatNumber(
-                          stats.critical_incidents
-                        )}
-                  </strong>
-
-                  <span>
-                    Critical Incidents
-                  </span>
-                </div>
-
-                <small className="resource-warning">
-                  Monitor
-                </small>
-              </div>
-
-            </div>
-          </div>
-
-        </section>
-
-        {/* =========================
-            REAL MAP
-        ========================= */}
-
-        <section className="dashboard-real-map-section">
-          <MapView />
-        </section>
-
-        {/* =========================
-            FOOTER STATUS
-        ========================= */}
-
-        <div className="dashboard-footer-status">
-          <div>
-            <span className="footer-live-dot"></span>
-            RESQ Network Online
-          </div>
-
-          <span>
-            {loading
-              ? 'Updating dashboard...'
-              : 'Last updated: Just now'}
-          </span>
-
-          <span>
-            Response monitoring active 24/7
-          </span>
-        </div>
-
-      </main>
-
-      {/* ==================================================
-          TEAM ASSIGNMENT MODAL
-      ================================================== */}
-
-      {showTeamModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.58)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-            zIndex: 9999,
-          }}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setShowTeamModal(false)
-            }
-          }}
-        >
-          <div
+        {isCitizen && (
+          <section
             style={{
-              width: '100%',
-              maxWidth: '520px',
-              background: 'white',
-              borderRadius: '24px',
-              padding: '28px',
-              boxShadow:
-                '0 25px 70px rgba(15, 23, 42, 0.28)',
+              ...cardStyle,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 18,
+              marginBottom: 22,
+              background: 'linear-gradient(120deg, #10243e, #1d4ed8)',
+              border: 0,
+              color: '#fff',
             }}
           >
+            <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 15,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: '#ffffff20',
+                }}
+              >
+                <Siren size={27} />
+              </div>
 
-            {/* MODAL HEADER */}
+              <div>
+                <h2 style={{ margin: 0, fontSize: 19 }}>
+                  Need emergency assistance?
+                </h2>
+                <p
+                  style={{
+                    margin: '6px 0 0',
+                    color: '#dbeafe',
+                    fontSize: 12,
+                  }}
+                >
+                  Submit an emergency report for the response team.
+                </p>
+              </div>
+            </div>
 
+            <button
+              type="button"
+              onClick={() => {
+                window.location.hash = '#/report-disaster'
+              }}
+              style={{
+                ...styles.actionButton,
+                background: '#fff',
+                color: COLORS.navy,
+                borderColor: '#fff',
+              }}
+            >
+              Report an Emergency <ArrowRight size={17} />
+            </button>
+          </section>
+        )}
+
+        {/* NEW: Full Response Team Management section for Admin */}
+        {isAdmin && (
+          <section style={{ ...cardStyle, marginBottom: 22 }}>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
-                gap: '15px',
-                marginBottom: '24px',
+                flexWrap: 'wrap',
+                gap: 14,
+                marginBottom: 17,
               }}
             >
               <div>
-                <div
-                  style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '14px',
-                    background: '#eff6ff',
-                    color: '#2563eb',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <UserCheck size={24} />
-                </div>
-
-                <h2
-                  style={{
-                    margin: 0,
-                    color: '#172033',
-                    fontSize: '22px',
-                  }}
-                >
-                  Assign Response Team
+                <h2 style={styles.sectionTitle}>
+                  <Users size={22} color={COLORS.blue} />
+                  Response Team Management
                 </h2>
-
-                <p
-                  style={{
-                    margin: '7px 0 0',
-                    color: '#64748b',
-                    fontSize: '13px',
-                  }}
-                >
-                  Select an available team for this emergency.
+                <p style={{ ...styles.muted, margin: '7px 0 0' }}>
+                  View team leader, contact, unit type, member count, location
+                  and current availability before assigning an emergency.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setShowTeamModal(false)
-                }
+              <span
                 style={{
-                  width: '36px',
-                  height: '36px',
-                  border: 'none',
-                  borderRadius: '10px',
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  fontSize: '20px',
-                  cursor: 'pointer',
+                  background: '#eff6ff',
+                  color: COLORS.blue,
+                  borderRadius: 20,
+                  padding: '8px 11px',
+                  fontSize: 11,
+                  fontWeight: 800,
                 }}
               >
-                ×
-              </button>
+                {filteredTeams.length} teams displayed
+              </span>
             </div>
-
-            {/* DISASTER INFO */}
-
-            {selectedDisaster && (
-              <div
-                style={{
-                  padding: '15px',
-                  borderRadius: '15px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  marginBottom: '20px',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    marginBottom: '7px',
-                  }}
-                >
-                  <AlertTriangle
-                    size={18}
-                    color="#ea580c"
-                  />
-
-                  <strong
-                    style={{
-                      color: '#172033',
-                    }}
-                  >
-                    {selectedDisaster.disaster_type}
-                  </strong>
-
-                  <span
-                    className={`priority ${getSeverityClass(
-                      selectedDisaster.severity
-                    )}`}
-                  >
-                    {selectedDisaster.severity}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    color: '#64748b',
-                    fontSize: '13px',
-                  }}
-                >
-                  <MapPin size={14} />
-
-                  {selectedDisaster.location}
-                </div>
-              </div>
-            )}
-
-            {/* TEAM SELECT */}
-
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontSize: '13px',
-                fontWeight: 800,
-                color: '#334155',
-              }}
-            >
-              Available Response Team
-            </label>
-
-            {teamsLoading ? (
-              <div
-                style={{
-                  padding: '18px',
-                  borderRadius: '13px',
-                  background: '#f8fafc',
-                  color: '#64748b',
-                  textAlign: 'center',
-                }}
-              >
-                Loading available teams...
-              </div>
-            ) : availableTeams.length === 0 ? (
-              <div
-                style={{
-                  padding: '18px',
-                  borderRadius: '13px',
-                  background: '#fff7ed',
-                  border: '1px solid #fed7aa',
-                  color: '#c2410c',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                }}
-              >
-                ⚠️ No response team is currently available.
-              </div>
-            ) : (
-              <select
-                value={selectedTeamId}
-                onChange={(event) =>
-                  setSelectedTeamId(event.target.value)
-                }
-                style={{
-                  width: '100%',
-                  padding: '13px 14px',
-                  borderRadius: '13px',
-                  border: '1px solid #cbd5e1',
-                  background: 'white',
-                  color: '#172033',
-                  fontSize: '14px',
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="">
-                  Select a response team...
-                </option>
-
-                {availableTeams.map((team) => (
-                  <option
-                    key={team.id}
-                    value={team.id}
-                  >
-                    {team.team_name} — {team.type} —{' '}
-                    {team.member_count} members
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* SELECTED TEAM PREVIEW */}
-
-            {selectedTeamId && (
-              <div
-                style={{
-                  marginTop: '14px',
-                  padding: '14px',
-                  borderRadius: '13px',
-                  background: '#f0fdf4',
-                  border: '1px solid #bbf7d0',
-                  color: '#166534',
-                  fontSize: '13px',
-                }}
-              >
-                <strong>
-                  ✓ Team ready for assignment
-                </strong>
-
-                <div style={{ marginTop: '4px' }}>
-                  {
-                    availableTeams.find(
-                      (team) =>
-                        String(team.id) ===
-                        String(selectedTeamId)
-                    )?.team_name
-                  }
-                </div>
-              </div>
-            )}
-
-            {/* MODAL BUTTONS */}
 
             <div
               style={{
-                display: 'flex',
-                gap: '10px',
-                marginTop: '24px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                gap: 10,
+                marginBottom: 16,
               }}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTeamModal(false)
-                  setSelectedDisaster(null)
-                  setSelectedTeamId('')
-                }}
-                style={{
-                  flex: 1,
-                  padding: '13px',
-                  borderRadius: '13px',
-                  border: '1px solid #cbd5e1',
-                  background: 'white',
-                  color: '#475569',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
+              <input
+                className="resq-dashboard-input"
+                style={inputStyle}
+                value={teamSearch}
+                onChange={(event) => setTeamSearch(event.target.value)}
+                placeholder="Search name, leader, phone, location..."
+                aria-label="Search response teams"
+              />
 
-              <button
-                type="button"
-                onClick={assignTeam}
-                disabled={
-                  !selectedTeamId ||
-                  actionLoading !== null ||
-                  availableTeams.length === 0
-                }
-                style={{
-                  flex: 1,
-                  padding: '13px',
-                  borderRadius: '13px',
-                  border: 'none',
-                  background:
-                    !selectedTeamId ||
-                    actionLoading !== null
-                      ? '#94a3b8'
-                      : '#2563eb',
-                  color: 'white',
-                  fontWeight: 800,
-                  cursor:
-                    !selectedTeamId ||
-                    actionLoading !== null
-                      ? 'not-allowed'
-                      : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '7px',
-                }}
+              <select
+                className="resq-dashboard-input"
+                style={inputStyle}
+                value={teamStatusFilter}
+                onChange={(event) => setTeamStatusFilter(event.target.value)}
+                aria-label="Filter teams by availability"
               >
-                <UserCheck size={17} />
-
-                {actionLoading ===
-                `${selectedDisaster?.id}-ASSIGN_TEAM`
-                  ? 'Assigning...'
-                  : 'Confirm Assignment'}
-              </button>
+                <option value="ALL">All team statuses</option>
+                <option value="AVAILABLE">Available</option>
+                <option value="BUSY">Busy / on mission</option>
+                <option value="OFFLINE">Offline</option>
+              </select>
             </div>
 
+            {loading && teams.length === 0 && (
+              <p style={styles.muted}>Loading response team details...</p>
+            )}
+
+            {!loading && teams.length === 0 && (
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: `1px dashed ${COLORS.border}`,
+                  borderRadius: 12,
+                  padding: 24,
+                  textAlign: 'center',
+                  color: COLORS.muted,
+                  fontSize: 12,
+                }}
+              >
+                <Users size={28} style={{ marginBottom: 9 }} />
+                <div style={{ fontWeight: 750, color: COLORS.navy }}>
+                  No response teams found
+                </div>
+                <p style={{ marginBottom: 0 }}>
+                  Add response teams through your team management/API workflow,
+                  then refresh this dashboard.
+                </p>
+              </div>
+            )}
+
+            {teams.length > 0 && filteredTeams.length === 0 && (
+              <p style={styles.muted}>
+                No teams match your search or selected status.
+              </p>
+            )}
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))',
+                gap: 13,
+              }}
+            >
+              {filteredTeams.map((team, index) => (
+                <TeamDetail
+                  key={team.id ?? index}
+                  team={team}
+                  index={index}
+                  assignedReports={reports.filter((report) =>
+                    ['ASSIGNED', 'IN_PROGRESS'].includes(
+                      String(report.status || '').toUpperCase(),
+                    ),
+                  )}
+                />
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: 15,
+                padding: 12,
+                background: '#fffbeb',
+                color: '#92400e',
+                borderRadius: 10,
+                fontSize: 11,
+                lineHeight: 1.6,
+              }}
+            >
+              <strong>Member details note:</strong> Your current teams API
+              returns a member count, not individual member records. Individual
+              member names and profiles will appear only after those records
+              are stored and returned by the backend.
+            </div>
+          </section>
+        )}
+
+        <section
+          className="resq-dashboard-lower"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1.45fr) minmax(300px, 0.9fr)',
+            gap: 20,
+            alignItems: 'start',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 20, minWidth: 0 }}>
+            <section style={cardStyle}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 15,
+                  flexWrap: 'wrap',
+                  marginBottom: 20,
+                }}
+              >
+                <div>
+                  <h2 style={styles.sectionTitle}>
+                    <AlertTriangle size={21} color={COLORS.blue} />
+                    {isCitizen ? 'My Emergency Reports' : 'Emergency Report Inbox'}
+                  </h2>
+                  <p style={{ ...styles.muted, margin: '7px 0 0' }}>
+                    {isAdmin
+                      ? 'Review citizen reports, verify incidents, assign response teams and allocate resources.'
+                      : 'Track incident status, location and priority.'}
+                  </p>
+                </div>
+
+                {isCitizen && (
+                  <ActionButton
+                    onClick={() => {
+                      window.location.hash = '#/report-disaster'
+                    }}
+                    color="#fff"
+                    background={COLORS.blue}
+                  >
+                    <Siren size={15} /> Report
+                  </ActionButton>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
+                  gap: 10,
+                  marginBottom: 17,
+                }}
+              >
+                <input
+                  className="resq-dashboard-input"
+                  style={inputStyle}
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search incident or location..."
+                  aria-label="Search reports"
+                />
+
+                <select
+                  className="resq-dashboard-input"
+                  style={inputStyle}
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  aria-label="Filter by status"
+                >
+                  <option value="ALL">All statuses</option>
+                  <option value="REPORTED">Reported</option>
+                  <option value="VERIFIED">Verified</option>
+                  <option value="ASSIGNED">Assigned</option>
+                  <option value="IN_PROGRESS">In progress</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+
+                <select
+                  className="resq-dashboard-input"
+                  style={inputStyle}
+                  value={severityFilter}
+                  onChange={(event) => setSeverityFilter(event.target.value)}
+                  aria-label="Filter by severity"
+                >
+                  <option value="ALL">All priorities</option>
+                  <option value="CRITICAL">Critical</option>
+                  <option value="HIGH">High</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="LOW">Low</option>
+                </select>
+              </div>
+
+              <div className="resq-dashboard-table-wrap">
+                <table className="resq-dashboard-table">
+                  <thead>
+                    <tr>
+                      <th>Incident / Analysis</th>
+                      <th>Location</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th>Reported</th>
+                      {(isAdmin || isResponseTeam) && <th>Actions</th>}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filteredReports.map((item) => {
+                      const status = String(item.status || 'REPORTED').toUpperCase()
+                      const badge = statusColors[status] || statusColors.REPORTED
+                      const coordinates = getCoordinates(item)
+                      const busy = busyId === item.id
+
+                      const availableForReport = teams.filter(
+                        (team) =>
+                          String(team.status || 'AVAILABLE').toUpperCase() ===
+                          'AVAILABLE',
+                      )
+
+                      const resourceForReport = resources.find(
+                        (resource) =>
+                          String(resource.id) ===
+                          String(selectedResource[item.id] || ''),
+                      )
+
+                      const stock = Number(
+                        resourceForReport?.quantity ??
+                          resourceForReport?.available_quantity ??
+                          resourceForReport?.stock,
+                      )
+
+                      return (
+                        <tr key={item.id}>
+                          <td>
+                            <div style={{ color: COLORS.navy, fontWeight: 750 }}>
+                              {formatStatus(item.disaster_type || 'Emergency')}
+                            </div>
+                            <div
+                              style={{
+                                color: COLORS.muted,
+                                fontSize: 11,
+                                marginTop: 5,
+                                maxWidth: 260,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {item.description || 'No description provided'}
+                            </div>
+
+                            {isAdmin && (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: COLORS.muted,
+                                  marginTop: 6,
+                                }}
+                              >
+                                Report ID: {item.id}
+                                {item.reporter_name
+                                  ? ` · By ${item.reporter_name}`
+                                  : ''}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                color: COLORS.text,
+                              }}
+                            >
+                              <MapPin size={14} color={COLORS.muted} />
+                              {item.location || 'Location unavailable'}
+                            </div>
+
+                            {coordinates && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setGps({
+                                    latitude: coordinates[0],
+                                    longitude: coordinates[1],
+                                  })
+                                }
+                                style={{
+                                  border: 0,
+                                  background: 'transparent',
+                                  padding: '5px 0 0',
+                                  fontSize: 11,
+                                  color: COLORS.blue,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <MapPinned
+                                  size={12}
+                                  style={{
+                                    verticalAlign: 'middle',
+                                    marginRight: 4,
+                                  }}
+                                />
+                                Show on map
+                              </button>
+                            )}
+                          </td>
+
+                          <td>
+                            <span
+                              style={{
+                                color: getSeverityColor(item.severity),
+                                fontWeight: 800,
+                                fontSize: 11,
+                              }}
+                            >
+                              {String(item.severity || 'MEDIUM').toUpperCase()}
+                            </span>
+                          </td>
+
+                          <td>
+                            <span
+                              style={{
+                                background: badge.bg,
+                                color: badge.color,
+                                borderRadius: 20,
+                                padding: '6px 9px',
+                                fontSize: 10,
+                                fontWeight: 800,
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {formatStatus(status)}
+                            </span>
+                          </td>
+
+                          <td
+                            style={{
+                              color: COLORS.muted,
+                              whiteSpace: 'nowrap',
+                              fontSize: 11,
+                            }}
+                          >
+                            {formatDate(item.created_at)}
+                          </td>
+
+                          {(isAdmin || isResponseTeam) && (
+                            <td>
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gap: 8,
+                                  minWidth: 180,
+                                }}
+                              >
+                                {isAdmin && status === 'REPORTED' && (
+                                  <>
+                                    <ActionButton
+                                      disabled={busy}
+                                      onClick={() =>
+                                        updateReportStatus(item.id, 'VERIFIED')
+                                      }
+                                      color={COLORS.green}
+                                    >
+                                      <CheckCircle2 size={13} /> Verify report
+                                    </ActionButton>
+
+                                    <ActionButton
+                                      disabled={busy}
+                                      onClick={() =>
+                                        updateReportStatus(item.id, 'REJECTED')
+                                      }
+                                      color={COLORS.red}
+                                    >
+                                      <XCircle size={13} /> Reject report
+                                    </ActionButton>
+                                  </>
+                                )}
+
+                                {isAdmin &&
+                                  ['VERIFIED', 'REPORTED'].includes(status) && (
+                                    <>
+                                      <label
+                                        style={{
+                                          fontSize: 10,
+                                          fontWeight: 750,
+                                          color: COLORS.muted,
+                                        }}
+                                      >
+                                        Assign response team
+                                      </label>
+
+                                      <select
+                                        className="resq-dashboard-input"
+                                        style={inputStyle}
+                                        aria-label="Select available response team"
+                                        value={selectedTeam[item.id] || ''}
+                                        onChange={(event) =>
+                                          setSelectedTeam((current) => ({
+                                            ...current,
+                                            [item.id]: event.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">
+                                          Select available team
+                                        </option>
+
+                                        {availableForReport.map((team) => (
+                                          <option key={team.id} value={team.id}>
+                                            {team.team_name ||
+                                              team.name ||
+                                              `Team ${team.id}`}
+                                            {team.type ? ` · ${team.type}` : ''}
+                                            {team.leader
+                                              ? ` · Leader: ${team.leader}`
+                                              : ''}
+                                          </option>
+                                        ))}
+                                      </select>
+
+                                      {selectedTeam[item.id] && (
+                                        <div
+                                          style={{
+                                            background: '#f8fafc',
+                                            borderRadius: 9,
+                                            padding: 10,
+                                            fontSize: 11,
+                                            lineHeight: 1.7,
+                                            color: COLORS.text,
+                                          }}
+                                        >
+                                          {(() => {
+                                            const selected = availableForReport.find(
+                                              (team) =>
+                                                String(team.id) ===
+                                                String(selectedTeam[item.id]),
+                                            )
+
+                                            if (!selected) return null
+
+                                            return (
+                                              <>
+                                                <strong>
+                                                  {selected.team_name ||
+                                                    selected.name ||
+                                                    `Team ${selected.id}`}
+                                                </strong>
+                                                <div>
+                                                  Leader:{' '}
+                                                  {selected.leader || 'Not provided'}
+                                                </div>
+                                                <div>
+                                                  Phone:{' '}
+                                                  {selected.phone || 'Not provided'}
+                                                </div>
+                                                <div>
+                                                  Members:{' '}
+                                                  {selected.member_count ??
+                                                    'Not provided'}
+                                                </div>
+                                                <div>
+                                                  Location:{' '}
+                                                  {selected.location ||
+                                                    'Not provided'}
+                                                </div>
+                                              </>
+                                            )
+                                          })()}
+                                        </div>
+                                      )}
+
+                                      {availableForReport.length === 0 && (
+                                        <span
+                                          style={{
+                                            color: COLORS.red,
+                                            fontSize: 10,
+                                          }}
+                                        >
+                                          No available teams returned by the API.
+                                        </span>
+                                      )}
+
+                                      <ActionButton
+                                        disabled={
+                                          busy || availableForReport.length === 0
+                                        }
+                                        onClick={() => assignTeam(item.id)}
+                                      >
+                                        <Users size={13} />
+                                        {busy ? 'Assigning...' : 'Assign team'}
+                                      </ActionButton>
+                                    </>
+                                  )}
+
+                                {isAdmin &&
+                                  !['REJECTED', 'RESOLVED'].includes(status) && (
+                                    <div
+                                      style={{
+                                        borderTop: `1px solid ${COLORS.border}`,
+                                        paddingTop: 9,
+                                        marginTop: 2,
+                                      }}
+                                    >
+                                      <label
+                                        style={{
+                                          display: 'block',
+                                          fontSize: 10,
+                                          fontWeight: 750,
+                                          color: COLORS.muted,
+                                          marginBottom: 6,
+                                        }}
+                                      >
+                                        Allocate resource
+                                      </label>
+
+                                      <select
+                                        className="resq-dashboard-input"
+                                        style={inputStyle}
+                                        aria-label="Select resource"
+                                        value={selectedResource[item.id] || ''}
+                                        onChange={(event) =>
+                                          setSelectedResource((current) => ({
+                                            ...current,
+                                            [item.id]: event.target.value,
+                                          }))
+                                        }
+                                      >
+                                        <option value="">Select resource</option>
+
+                                        {resources.map((resource) => {
+                                          const quantity =
+                                            resource.quantity ??
+                                            resource.available_quantity ??
+                                            resource.stock ??
+                                            'Unknown stock'
+
+                                          return (
+                                            <option
+                                              key={resource.id}
+                                              value={resource.id}
+                                            >
+                                              {resource.name ||
+                                                resource.resource_name ||
+                                                resource.type ||
+                                                `Resource ${resource.id}`}
+                                              {' — stock: '}
+                                              {quantity}
+                                            </option>
+                                          )
+                                        })}
+                                      </select>
+
+                                      <input
+                                        className="resq-dashboard-input"
+                                        style={{ ...inputStyle, marginTop: 7 }}
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        max={
+                                          Number.isFinite(stock) ? stock : undefined
+                                        }
+                                        placeholder="Quantity"
+                                        aria-label="Resource quantity"
+                                        value={resourceQuantity[item.id] || ''}
+                                        onChange={(event) =>
+                                          setResourceQuantity((current) => ({
+                                            ...current,
+                                            [item.id]: event.target.value,
+                                          }))
+                                        }
+                                      />
+
+                                      <ActionButton
+                                        disabled={busy || resources.length === 0}
+                                        onClick={() => allocateResource(item.id)}
+                                        color={COLORS.blue}
+                                      >
+                                        <Package size={13} />
+                                        {busy ? 'Processing...' : 'Allocate resource'}
+                                      </ActionButton>
+                                    </div>
+                                  )}
+
+                                {isResponseTeam && status === 'ASSIGNED' && (
+                                  <ActionButton
+                                    disabled={busy}
+                                    onClick={() =>
+                                      updateReportStatus(item.id, 'IN_PROGRESS')
+                                    }
+                                    color="#0e7490"
+                                  >
+                                    <Activity size={13} /> Start mission
+                                  </ActionButton>
+                                )}
+
+                                {isResponseTeam && status === 'IN_PROGRESS' && (
+                                  <ActionButton
+                                    disabled={busy}
+                                    onClick={() =>
+                                      updateReportStatus(item.id, 'RESOLVED')
+                                    }
+                                    color={COLORS.green}
+                                  >
+                                    <CheckCircle2 size={13} /> Resolve mission
+                                  </ActionButton>
+                                )}
+
+                                {busy && (
+                                  <span
+                                    style={{
+                                      fontSize: 10,
+                                      color: COLORS.muted,
+                                    }}
+                                  >
+                                    Processing request...
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+
+                    {!loading && filteredReports.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={isAdmin || isResponseTeam ? 6 : 5}
+                          style={{
+                            textAlign: 'center',
+                            padding: 35,
+                            color: COLORS.muted,
+                          }}
+                        >
+                          <FileText
+                            size={27}
+                            style={{ display: 'block', margin: '0 auto 10px' }}
+                          />
+                          <strong>
+                            {myReports.length === 0
+                              ? 'No reports found'
+                              : 'No reports match your filters'}
+                          </strong>
+
+                          {isCitizen && myReports.length === 0 && (
+                            <div style={{ marginTop: 13 }}>
+                              <ActionButton
+                                onClick={() => {
+                                  window.location.hash = '#/report-disaster'
+                                }}
+                                color="#fff"
+                                background={COLORS.blue}
+                              >
+                                <Siren size={14} /> Submit an emergency report
+                              </ActionButton>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+
+                    {loading && (
+                      <tr>
+                        <td
+                          colSpan={isAdmin || isResponseTeam ? 6 : 5}
+                          style={{
+                            textAlign: 'center',
+                            padding: 30,
+                            color: COLORS.muted,
+                          }}
+                        >
+                          Loading emergency reports...
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section style={cardStyle}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap',
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <div>
+                  <h2 style={styles.sectionTitle}>
+                    <MapPinned size={21} color={COLORS.blue} />
+                    Live Emergency Map
+                  </h2>
+                  <p style={{ ...styles.muted, margin: '7px 0 0' }}>
+                    Interactive OpenStreetMap with submitted report markers.
+                  </p>
+                </div>
+
+                <span
+                  style={{
+                    background: '#eff6ff',
+                    color: COLORS.blue,
+                    borderRadius: 20,
+                    padding: '8px 10px',
+                    fontSize: 11,
+                    fontWeight: 800,
+                  }}
+                >
+                  {reportsWithCoordinates.length} mapped
+                </span>
+              </div>
+
+              <div
+                style={{
+                  height: 390,
+                  width: '100%',
+                  overflow: 'hidden',
+                  borderRadius: 13,
+                  border: `1px solid ${COLORS.border}`,
+                  position: 'relative',
+                  zIndex: 0,
+                }}
+              >
+                <MapContainer
+                  center={mapCenter}
+                  zoom={11}
+                  scrollWheelZoom
+                  style={{
+                    height: '100%',
+                    width: '100%',
+                    background: '#eaf1f5',
+                  }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+
+                  <MapRecenter center={mapCenter} />
+                  <MapSizeFix />
+
+                  {reportsWithCoordinates.map((report) => (
+                    <Marker
+                      key={report.id}
+                      position={report.coordinates}
+                      icon={markerIcon}
+                    >
+                      <Popup>
+                        <div style={{ minWidth: 175 }}>
+                          <strong>
+                            {formatStatus(report.disaster_type || 'Emergency')}
+                          </strong>
+                          <p style={{ margin: '6px 0' }}>
+                            {report.location || 'Location unavailable'}
+                          </p>
+                          <p style={{ margin: '6px 0' }}>
+                            Priority:{' '}
+                            <strong
+                              style={{
+                                color: getSeverityColor(report.severity),
+                              }}
+                            >
+                              {String(report.severity || 'MEDIUM').toUpperCase()}
+                            </strong>
+                          </p>
+                          <p style={{ margin: '6px 0' }}>
+                            Status: {formatStatus(report.status)}
+                          </p>
+                          <small>
+                            {report.coordinates[0].toFixed(5)},{' '}
+                            {report.coordinates[1].toFixed(5)}
+                          </small>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
+
+                  {gps && (
+                    <Marker
+                      position={[gps.latitude, gps.longitude]}
+                      icon={markerIcon}
+                    >
+                      <Popup>
+                        <strong>Your current / selected location</strong>
+                        <br />
+                        {gps.latitude.toFixed(6)}, {gps.longitude.toFixed(6)}
+                      </Popup>
+                    </Marker>
+                  )}
+                </MapContainer>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 9,
+                  flexWrap: 'wrap',
+                  marginTop: 13,
+                }}
+              >
+                <ActionButton onClick={getCurrentLocation} disabled={locating}>
+                  <LocateFixed size={16} />
+                  {locating ? 'Detecting location...' : 'Use My Current Location'}
+                </ActionButton>
+
+                <ActionButton
+                  onClick={() => {
+                    setGps(null)
+                    setGpsMessage('')
+                  }}
+                >
+                  <RefreshCw size={15} /> Show report map
+                </ActionButton>
+              </div>
+
+              {gps && (
+                <div
+                  style={{
+                    background: '#f0fdf4',
+                    color: '#166534',
+                    borderRadius: 10,
+                    padding: 11,
+                    fontSize: 12,
+                    marginTop: 11,
+                  }}
+                >
+                  <Navigation
+                    size={14}
+                    style={{ verticalAlign: 'middle', marginRight: 5 }}
+                  />
+                  Coordinates: {gps.latitude.toFixed(6)},{' '}
+                  {gps.longitude.toFixed(6)}
+                </div>
+              )}
+
+              {gpsMessage && (
+                <p
+                  role="status"
+                  style={{
+                    color: gpsMessage.includes('successfully')
+                      ? COLORS.green
+                      : COLORS.red,
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    marginBottom: 0,
+                  }}
+                >
+                  {gpsMessage}
+                </p>
+              )}
+
+              <p
+                style={{
+                  color: COLORS.muted,
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  marginBottom: 0,
+                  marginTop: 12,
+                }}
+              >
+                {reportsWithCoordinates.length} report(s) have valid GPS
+                coordinates. Reports without latitude and longitude cannot
+                appear as map markers.
+              </p>
+            </section>
           </div>
-        </div>
-      )}
+
+          <aside style={{ display: 'grid', gap: 20, minWidth: 0 }}>
+            <section style={cardStyle}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: 16 }}>
+                <Users size={21} color={COLORS.blue} />
+                Response Teams
+              </h2>
+
+              {teams.length === 0 && !loading && (
+                <div style={styles.muted}>
+                  No response teams were returned by the backend.
+                </div>
+              )}
+
+              {teams.slice(0, 8).map((team, index) => {
+                const teamStatus = String(
+                  team.status || 'AVAILABLE',
+                ).toUpperCase()
+
+                const statusStyle =
+                  teamStatusColors[teamStatus] || teamStatusColors.OFFLINE
+
+                return (
+                  <div
+                    key={team.id ?? index}
+                    style={{
+                      padding: '13px 0',
+                      borderTop: `1px solid ${COLORS.border}`,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 41,
+                          height: 41,
+                          borderRadius: 12,
+                          background: '#eff6ff',
+                          color: COLORS.blue,
+                          display: 'grid',
+                          placeItems: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Users size={19} />
+                      </div>
+
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 750,
+                            color: COLORS.navy,
+                          }}
+                        >
+                          {team.team_name ||
+                            team.name ||
+                            `Response Team ${index + 1}`}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: COLORS.muted,
+                            marginTop: 4,
+                          }}
+                        >
+                          {team.type || team.team_type || 'Response unit'}
+                        </div>
+                      </div>
+
+                      <span
+                        style={{
+                          background: statusStyle.bg,
+                          color: statusStyle.color,
+                          borderRadius: 20,
+                          padding: '6px 8px',
+                          fontSize: 9,
+                          fontWeight: 800,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {teamStatus}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        margin: '10px 0 0 51px',
+                        color: COLORS.muted,
+                        fontSize: 10,
+                        lineHeight: 1.8,
+                      }}
+                    >
+                      <div>Leader: {team.leader || 'Not provided'}</div>
+                      <div>Phone: {team.phone || 'Not provided'}</div>
+                      <div>
+                        Members: {team.member_count ?? 'Not provided'}
+                      </div>
+                      <div>Location: {team.location || 'Not provided'}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </section>
+
+            <section style={cardStyle}>
+              <h2 style={{ ...styles.sectionTitle, marginBottom: 16 }}>
+                <Package size={21} color={COLORS.blue} />
+                Resource Inventory
+              </h2>
+
+              {resources.length === 0 && !loading && (
+                <div style={styles.muted}>
+                  No resource inventory was returned by the backend.
+                </div>
+              )}
+
+              {resources.slice(0, 8).map((resource, index) => (
+                <div
+                  key={resource.id ?? index}
+                  style={{
+                    padding: '12px 0',
+                    borderTop: `1px solid ${COLORS.border}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        color: COLORS.navy,
+                        fontWeight: 750,
+                        fontSize: 12,
+                      }}
+                    >
+                      {resource.name ||
+                        resource.resource_name ||
+                        resource.type ||
+                        `Resource ${index + 1}`}
+                    </div>
+                    <div
+                      style={{
+                        color: COLORS.muted,
+                        fontSize: 10,
+                        marginTop: 4,
+                      }}
+                    >
+                      {resource.location ||
+                        resource.category ||
+                        'Emergency resource'}
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      color: COLORS.blue,
+                      background: '#eff6ff',
+                      padding: '7px 9px',
+                      borderRadius: 9,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {resource.quantity ??
+                      resource.available_quantity ??
+                      resource.stock ??
+                      '—'}
+                  </span>
+                </div>
+              ))}
+            </section>
+
+            <section
+              style={{
+                ...cardStyle,
+                background: '#eff6ff',
+                borderColor: '#dbeafe',
+              }}
+            >
+              <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+                <div style={{ color: COLORS.blue }}>
+                  <Bell size={22} />
+                </div>
+                <div>
+                  <h3
+                    style={{
+                      margin: '0 0 7px',
+                      fontSize: 15,
+                      color: COLORS.navy,
+                    }}
+                  >
+                    Stay Informed
+                  </h3>
+                  <p
+                    style={{
+                      margin: 0,
+                      color: COLORS.muted,
+                      fontSize: 12,
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    Check RESQ notifications for emergency report and response
+                    updates.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.hash = '#/notifications'
+                    }}
+                    style={{
+                      ...styles.actionButton,
+                      marginTop: 13,
+                      color: COLORS.blue,
+                      borderColor: '#bfdbfe',
+                      background: '#fff',
+                    }}
+                  >
+                    View Notifications <ArrowRight size={15} />
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section style={{ ...cardStyle, fontSize: 12 }}>
+              <h3
+                style={{
+                  margin: '0 0 12px',
+                  color: COLORS.navy,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Clock3 size={17} color={COLORS.blue} />
+                System Overview
+              </h3>
+
+              {[
+                ['Reports with GPS', reportsWithCoordinates.length],
+                ['Response teams', teams.length],
+                ['Available teams', teamStats.available],
+                ['Resources listed', resources.length],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    padding: '9px 0',
+                    borderTop: `1px solid ${COLORS.border}`,
+                  }}
+                >
+                  <span style={{ color: COLORS.muted }}>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+
+              <ActionButton onClick={refresh} disabled={refreshing}>
+                <RefreshCw size={14} /> Refresh dashboard data
+              </ActionButton>
+            </section>
+          </aside>
+        </section>
+
+        <footer
+          style={{
+            textAlign: 'center',
+            color: COLORS.muted,
+            fontSize: 11,
+            padding: '30px 10px 10px',
+          }}
+        >
+          RESQ · Smart Disaster Response System · Stay alert, stay safe.
+        </footer>
+      </main>
     </div>
   )
 }
